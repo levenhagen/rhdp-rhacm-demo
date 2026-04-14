@@ -1,0 +1,57 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: install-ansible-operator
+  namespace: open-cluster-management-global-set
+  annotations:
+    policy.open-cluster-management.io/description: This policy installs the Red Hat Ansible Automation Platform 2.6 Operator
+    policy.open-cluster-management.io/categories: CM Configuration Management
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+    policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
+spec:
+  disabled: false
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1beta1
+        kind: OperatorPolicy
+        metadata:
+          name: install-operator-1
+        spec:
+          remediationAction: enforce
+          severity: critical
+          complianceType: musthave
+          subscription:
+            name: ansible-automation-platform-operator
+            namespace: aap
+            channel: stable-2.6-cluster-scoped
+            source: redhat-operators
+            sourceNamespace: openshift-marketplace
+            startingCSV: aap-operator.v2.6.0-0.1774648973
+          upgradeApproval: Automatic
+          versions:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: policy-aap-install
+        spec:
+          remediationAction: enforce
+          severity: low
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: aap.ansible.com/v1alpha1
+                kind: AnsibleAutomationPlatform
+                metadata:
+                  name: example
+                  namespace: aap
+                spec:
+                  route_tls_termination_mechanism: Edge
+                  no_log: true
+                  redis_mode: standalone
+                  api:
+                    log_level: INFO
+                    replicas: 1
+                  database:
+                    postgres_data_volume_init: false
+                    idle_disabled: false
