@@ -1,5 +1,6 @@
 apiVersion: observability.open-cluster-management.io/v1beta2
 metadata:
+  kind: MultiClusterObservability
   name: observability
 spec:
   observabilityAddonSpec: {}
