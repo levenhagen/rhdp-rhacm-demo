@@ -1,0 +1,490 @@
+---
+###############################################################################
+# Regional-DR Ansible Playbook for OpenShift 4.21
+#
+# This playbook automates steps 4-13 of the Regional-DR setup process
+#
+# Prerequisites:
+# - ansible installed (pip install ansible kubernetes)
+# - oc CLI logged into RHACM hub cluster
+# - Two managed clusters deployed and ready
+# - ClusterSet 'regional' created with both clusters
+#
+# Usage: ansible-playbook automate-regional-dr.yml
+###############################################################################
+
+- name: Automate Regional-DR Setup for OpenShift 4.21
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    clusterset_name: "regional"
+    cluster1_name: "cluster1"
+    cluster2_name: "cluster2"
+    policies_namespace: "policies"
+    gitops_namespace: "openshift-gitops"
+    policy_repo: "https://github.com/levenhagen/policy-collection"
+    policy_revision: "odf-policy-only"
+
+  tasks:
+
+    #########################################################################
+    # Prerequisites Check
+    #########################################################################
+
+    - name: Check prerequisites
+      block:
+        - name: Verify oc CLI is available
+          command: oc whoami
+          register: oc_check
+          changed_when: false
+
+        - name: Verify managed cluster1 exists
+          command: "oc get managedcluster {{ cluster1_name }}"
+          register: cluster1_check
+          changed_when: false
+
+        - name: Verify managed cluster2 exists
+          command: "oc get managedcluster {{ cluster2_name }}"
+          register: cluster2_check
+          changed_when: false
+
+        - name: Verify clusterset exists
+          command: "oc get managedclusterset {{ clusterset_name }}"
+          register: clusterset_check
+          changed_when: false
+
+        - name: Prerequisites check passed
+          debug:
+            msg: "All prerequisites validated successfully"
+
+    #########################################################################
+    # Step 4: Deploy Submariner
+    #########################################################################
+
+    - name: "Step 4: Deploy Submariner"
+      block:
+        - name: Check if Submariner already deployed
+          command: "oc get managedclusteraddon submariner -n {{ cluster1_name }}"
+          register: submariner_check
+          failed_when: false
+          changed_when: false
+
+        - name: Install Submariner on clusterset
+          when: submariner_check.rc != 0
+          block:
+            - name: Create SubmarinerConfig
+              kubernetes.core.k8s:
+                state: present
+                definition:
+                  apiVersion: submariner.io/v1alpha1
+                  kind: SubmarinerConfig
+                  metadata:
+                    name: submariner
+                    namespace: "{{ clusterset_name }}-broker"
+                  spec:
+                    gatewayConfig:
+                      gateways: 1
+                    IPSecNATTPort: 4500
+                    NATTEnable: true
+                    cableDriver: libreswan
+
+            - name: Wait for Submariner deployment
+              pause:
+                seconds: 30
+
+            - name: Wait for Submariner addon on cluster1
+              command: "oc get managedclusteraddon submariner -n {{ cluster1_name }}"
+              register: result
+              until: result.rc == 0
+              retries: 60
+              delay: 10
+
+            - name: Wait for Submariner addon on cluster2
+              command: "oc get managedclusteraddon submariner -n {{ cluster2_name }}"
+              register: result
+              until: result.rc == 0
+              retries: 60
+              delay: 10
+
+    #########################################################################
+    # Step 5: Install OpenShift GitOps Operator
+    #########################################################################
+
+    - name: "Step 5: Install OpenShift GitOps Operator"
+      block:
+        - name: Check if GitOps already installed
+          command: "oc get deployment openshift-gitops-server -n {{ gitops_namespace }}"
+          register: gitops_check
+          failed_when: false
+          changed_when: false
+
+        - name: Install GitOps operator
+          when: gitops_check.rc != 0
+          block:
+            - name: Create GitOps operator namespace
+              kubernetes.core.k8s:
+                state: present
+                definition:
+                  apiVersion: v1
+                  kind: Namespace
+                  metadata:
+                    name: openshift-gitops-operator
+
+            - name: Create GitOps OperatorGroup
+              kubernetes.core.k8s:
+                state: present
+                definition:
+                  apiVersion: operators.coreos.com/v1
+                  kind: OperatorGroup
+                  metadata:
+                    name: openshift-gitops-operator
+                    namespace: openshift-gitops-operator
+                  spec: {}
+
+            - name: Create GitOps Subscription
+              kubernetes.core.k8s:
+                state: present
+                definition:
+                  apiVersion: operators.coreos.com/v1alpha1
+                  kind: Subscription
+                  metadata:
+                    name: openshift-gitops-operator
+                    namespace: openshift-gitops-operator
+                  spec:
+                    channel: latest
+                    name: openshift-gitops-operator
+                    source: redhat-operators
+                    sourceNamespace: openshift-marketplace
+
+            - name: Wait for GitOps to install
+              pause:
+                seconds: 60
+
+            - name: Wait for GitOps server pods
+              command: "oc wait --for=condition=Ready pods -l app.kubernetes.io/name=openshift-gitops-server -n {{ gitops_namespace }} --timeout=600s"
+              register: result
+
+    #########################################################################
+    # Step 6: Integrate OpenShift GitOps and RHACM
+    #########################################################################
+
+    - name: "Step 6: Integrate GitOps and RHACM"
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ item }}"
+      loop:
+        - apiVersion: apps.open-cluster-management.io/v1beta1
+          kind: GitOpsCluster
+          metadata:
+            name: openshift-gitops-main-server
+            namespace: "{{ gitops_namespace }}"
+          spec:
+            argoServer:
+              argoNamespace: "{{ gitops_namespace }}"
+            placementRef:
+              name: openshift-gitops-main-server-placement
+              kind: Placement
+              apiVersion: cluster.open-cluster-management.io/v1beta1
+
+        - apiVersion: cluster.open-cluster-management.io/v1beta2
+          kind: ManagedClusterSetBinding
+          metadata:
+            name: global
+            namespace: "{{ gitops_namespace }}"
+          spec:
+            clusterSet: global
+
+        - apiVersion: cluster.open-cluster-management.io/v1beta2
+          kind: ManagedClusterSetBinding
+          metadata:
+            name: "{{ clusterset_name }}"
+            namespace: "{{ gitops_namespace }}"
+          spec:
+            clusterSet: "{{ clusterset_name }}"
+
+        - apiVersion: cluster.open-cluster-management.io/v1beta1
+          kind: Placement
+          metadata:
+            name: openshift-gitops-main-server-placement
+            namespace: "{{ gitops_namespace }}"
+          spec:
+            clusterSets:
+              - global
+              - "{{ clusterset_name }}"
+
+    #########################################################################
+    # Step 7: Configure ClusterSet Bindings
+    #########################################################################
+
+    - name: "Step 7: Configure ClusterSet bindings"
+      block:
+        - name: Create policies namespace
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: "{{ policies_namespace }}"
+
+        - name: Create ManagedClusterSetBindings
+          kubernetes.core.k8s:
+            state: present
+            definition: "{{ item }}"
+          loop:
+            - apiVersion: cluster.open-cluster-management.io/v1beta2
+              kind: ManagedClusterSetBinding
+              metadata:
+                name: "{{ clusterset_name }}"
+                namespace: default
+              spec:
+                clusterSet: "{{ clusterset_name }}"
+
+            - apiVersion: cluster.open-cluster-management.io/v1beta2
+              kind: ManagedClusterSetBinding
+              metadata:
+                name: "{{ clusterset_name }}"
+                namespace: "{{ policies_namespace }}"
+              spec:
+                clusterSet: "{{ clusterset_name }}"
+
+            - apiVersion: cluster.open-cluster-management.io/v1beta2
+              kind: ManagedClusterSetBinding
+              metadata:
+                name: global
+                namespace: default
+              spec:
+                clusterSet: global
+
+            - apiVersion: cluster.open-cluster-management.io/v1beta2
+              kind: ManagedClusterSetBinding
+              metadata:
+                name: global
+                namespace: "{{ policies_namespace }}"
+              spec:
+                clusterSet: global
+
+    #########################################################################
+    # Step 8: Adjust ArgoCD Cluster-Admin Permissions
+    #########################################################################
+
+    - name: "Step 8: Adjust ArgoCD cluster-admin permissions"
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('file', 'rbac-argocd.yaml') }}"
+
+    #########################################################################
+    # Step 9: Integrate Policy Generator with OpenShift GitOps
+    #########################################################################
+
+    - name: "Step 9: Integrate Policy Generator"
+      block:
+        - name: Update ArgoCD with policy generator
+          kubernetes.core.k8s:
+            state: present
+            merge_type: merge
+            definition:
+              apiVersion: argoproj.io/v1alpha1
+              kind: ArgoCD
+              metadata:
+                name: openshift-gitops
+                namespace: "{{ gitops_namespace }}"
+              spec:
+                kustomizeBuildOptions: --enable-alpha-plugins
+                repo:
+                  env:
+                    - name: KUSTOMIZE_PLUGIN_HOME
+                      value: /etc/kustomize/plugin
+                  initContainers:
+                    - name: policy-generator-install
+                      image: registry.redhat.io/rhacm2/multicluster-operators-subscription-rhel9:v2.13.4-2
+                      command:
+                        - /bin/bash
+                      args:
+                        - '-c'
+                        - >-
+                          cp /policy-generator/PolicyGenerator-not-fips-compliant
+                          /policy-generator-tmp/PolicyGenerator
+                      volumeMounts:
+                        - mountPath: /policy-generator-tmp
+                          name: policy-generator
+                  volumeMounts:
+                    - mountPath: /etc/kustomize/plugin/policy.open-cluster-management.io/v1/policygenerator
+                      name: policy-generator
+                  volumes:
+                    - name: policy-generator
+                      emptyDir: {}
+
+        - name: Wait for ArgoCD restart
+          pause:
+            seconds: 30
+
+        - name: Wait for repo server restart
+          command: "oc wait --for=condition=Ready pods -l app.kubernetes.io/name=openshift-gitops-repo-server -n {{ gitops_namespace }} --timeout=300s"
+
+    #########################################################################
+    # Step 10: Prepare Nodes for ODF Deployment
+    #########################################################################
+
+    - name: "Step 10: Prepare nodes for ODF"
+      block:
+        - name: Label worker nodes on cluster1
+          shell: |
+            for node in $(oc --context={{ cluster1_name }} get nodes -l node-role.kubernetes.io/worker= -o name); do
+              oc --context={{ cluster1_name }} label "$node" cluster.ocs.openshift.io/openshift-storage="" --overwrite
+            done
+
+        - name: Label worker nodes on cluster2
+          shell: |
+            for node in $(oc --context={{ cluster2_name }} get nodes -l node-role.kubernetes.io/worker= -o name); do
+              oc --context={{ cluster2_name }} label "$node" cluster.ocs.openshift.io/openshift-storage="" --overwrite
+            done
+
+    #########################################################################
+    # Step 11: Deploy ODF Policies with GitOps
+    #########################################################################
+
+    - name: "Step 11: Deploy ODF policies"
+      block:
+        - name: Create ODF policy ApplicationSet
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: argoproj.io/v1alpha1
+              kind: ApplicationSet
+              metadata:
+                name: odf-policy-gen
+                namespace: "{{ gitops_namespace }}"
+              spec:
+                generators:
+                  - git:
+                      repoURL: "{{ policy_repo }}"
+                      revision: "{{ policy_revision }}"
+                      directories:
+                        - path: policygenerator/policy-sets/stable/openshift-plus
+                template:
+                  metadata:
+                    name: odf-policy-gen
+                    labels:
+                      velero.io/exclude-from-backup: "true"
+                  spec:
+                    project: default
+                    source:
+                      repoURL: "{{ policy_repo }}"
+                      targetRevision: "{{ policy_revision }}"
+                      path: "{%raw%}{{path}}{%endraw%}"
+                    destination:
+                      server: https://kubernetes.default.svc
+                      namespace: "{{ policies_namespace }}"
+                    syncPolicy:
+                      automated:
+                        prune: true
+                        selfHeal: true
+                      syncOptions:
+                        - CreateNamespace=false
+                        - PruneLast=true
+
+        - name: Wait for policies to be created
+          pause:
+            seconds: 60
+
+    #########################################################################
+    # Step 12: Patch StorageCluster CR
+    #########################################################################
+
+    - name: "Step 12: Patch StorageCluster for GlobalNet"
+      block:
+        - name: Check if Submariner exists
+          command: oc get submariner -A
+          register: submariner_exists
+          failed_when: false
+          changed_when: false
+
+        - name: Patch StorageClusters
+          when: submariner_exists.rc == 0
+          block:
+            - name: Wait for StorageCluster to exist
+              pause:
+                seconds: 120
+
+            - name: Patch StorageCluster on cluster1
+              command: |
+                oc --context={{ cluster1_name }} patch storagecluster ocs-storagecluster \
+                  -n openshift-storage --type=merge \
+                  --patch='{"spec":{"network":{"multiClusterService":{"clusterID":"{{ cluster1_name }}","enabled":true}}}}'
+              register: result
+              failed_when: false
+
+            - name: Patch StorageCluster on cluster2
+              command: |
+                oc --context={{ cluster2_name }} patch storagecluster ocs-storagecluster \
+                  -n openshift-storage --type=merge \
+                  --patch='{"spec":{"network":{"multiClusterService":{"clusterID":"{{ cluster2_name }}","enabled":true}}}}'
+              register: result
+              failed_when: false
+
+    #########################################################################
+    # Step 13: Install ODF MultiCluster Orchestrator
+    #########################################################################
+
+    - name: "Step 13: Install ODF MultiCluster Orchestrator"
+      block:
+        - name: Check if MCO already installed
+          command: "oc get deployment odf-multicluster-console -n openshift-operators"
+          register: mco_check
+          failed_when: false
+          changed_when: false
+
+        - name: Install ODF MCO
+          when: mco_check.rc != 0
+          block:
+            - name: Create ODF MCO Subscription
+              kubernetes.core.k8s:
+                state: present
+                definition:
+                  apiVersion: operators.coreos.com/v1alpha1
+                  kind: Subscription
+                  metadata:
+                    name: odf-multicluster-orchestrator
+                    namespace: openshift-operators
+                  spec:
+                    channel: stable-4.21
+                    name: odf-multicluster-orchestrator
+                    source: redhat-operators
+                    sourceNamespace: openshift-marketplace
+                    installPlanApproval: Automatic
+
+            - name: Wait for ODF MCO installation
+              pause:
+                seconds: 60
+
+            - name: Wait for ODF MCO pods
+              command: "oc wait --for=condition=Ready pods -l app.kubernetes.io/name=odf-multicluster-orchestrator -n openshift-operators --timeout=600s"
+              register: result
+              failed_when: false
+
+            - name: Wait for DR Hub Operator
+              command: "oc wait --for=condition=Ready pods -l app=ramen-hub-operator -n openshift-dr-system --timeout=300s"
+              register: result
+              failed_when: false
+
+    #########################################################################
+    # Final Summary
+    #########################################################################
+
+    - name: Display completion message
+      debug:
+        msg:
+          - "============================================================================="
+          - "Regional-DR automation completed successfully!"
+          - "============================================================================="
+          - ""
+          - "Next steps:"
+          - "  1. Wait 10-15 minutes for ODF deployment to complete"
+          - "  2. Verify ServiceExports exist (should see 12):"
+          - "     oc get serviceexport -n openshift-storage"
+          - "  3. Proceed with Step 14: Configure SSL access across clusters"
+          - "     (See documentation for manual steps)"
+          - ""
+          - "============================================================================="
