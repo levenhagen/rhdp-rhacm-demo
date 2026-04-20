@@ -138,7 +138,7 @@ deploy_submariner() {
 
     # Create SubmarinerConfig
     cat <<EOF | oc apply -f -
-apiVersion: submariner.io/v1alpha1
+apiVersion: submarineraddon.open-cluster-management.io/v1alpha1
 kind: SubmarinerConfig
 metadata:
   name: submariner
