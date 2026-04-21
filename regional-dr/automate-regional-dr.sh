@@ -138,21 +138,68 @@ deploy_submariner() {
 
     # Create SubmarinerConfig
     cat <<EOF | oc apply -f -
+apiVersion: addon.open-cluster-management.io/v1alpha1
+kind: ManagedClusterAddOn
+metadata:
+  name: submariner
+  namespace: cluster1
+spec:
+  installNamespace: submariner-operator
+---
 apiVersion: submarineraddon.open-cluster-management.io/v1alpha1
 kind: SubmarinerConfig
 metadata:
   name: submariner
-  namespace: $CLUSTERSET_NAME-broker
+  namespace: cluster1
 spec:
   gatewayConfig:
     gateways: 1
+    aws:
+      instanceType: c5d.large
   IPSecNATTPort: 4500
+  airGappedDeployment: false
   NATTEnable: true
   cableDriver: libreswan
   globalCIDR: ""
-  networkType: ""
   credentialsSecret:
-    name: ""
+    name: cluster1-aws-creds
+---
+apiVersion: addon.open-cluster-management.io/v1alpha1
+kind: ManagedClusterAddOn
+metadata:
+  name: submariner
+  namespace: cluster2
+spec:
+  installNamespace: submariner-operator
+---
+apiVersion: submarineraddon.open-cluster-management.io/v1alpha1
+kind: SubmarinerConfig
+metadata:
+  name: submariner
+  namespace: cluster2
+spec:
+  gatewayConfig:
+    gateways: 1
+    aws:
+      instanceType: c5d.large
+  IPSecNATTPort: 4500
+  airGappedDeployment: false
+  NATTEnable: true
+  cableDriver: libreswan
+  globalCIDR: ""
+  credentialsSecret:
+    name: cluster2-aws-creds
+---
+apiVersion: submariner.io/v1alpha1
+kind: Broker
+metadata:
+  name: submariner-broker
+  namespace: regional-broker
+  labels:
+    cluster.open-cluster-management.io/backup: submariner
+spec:
+  globalnetEnabled: true
+  globalnetCIDRRange: 242.0.0.0/8
 EOF
 
     log_info "Waiting for Submariner to deploy on both clusters..."
