@@ -645,9 +645,6 @@ main() {
     adjust_argocd_permissions
     echo ""
 
-    integrate_policy_generator
-    echo ""
-
     prepare_odf_nodes
     echo ""
 
