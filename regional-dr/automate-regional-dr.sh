@@ -71,11 +71,12 @@ wait_for_pods() {
 wait_for_resource() {
     local resource=$1
     local namespace=$2
-    local timeout=${3:-300}
+    local context=$3
+    local timeout=${4:-300}
 
     log_info "Waiting for $resource to exist in namespace $namespace..."
     local count=0
-    while ! oc get "$resource" -n "$namespace" &>/dev/null; do
+    while ! oc get "$resource" -n "$namespace" --context $context &>/dev/null; do
         sleep 5
         count=$((count + 5))
         if [ $count -ge $timeout ]; then
@@ -206,8 +207,8 @@ EOF
     sleep 30
 
     # Wait for submariner-addon to be available
-    wait_for_resource "managedclusteraddon submariner" "$CLUSTER1_NAME" 600
-    wait_for_resource "managedclusteraddon submariner" "$CLUSTER2_NAME" 600
+    wait_for_resource "managedclusteraddon submariner" "$CLUSTER1_NAME" "hub" 600
+    wait_for_resource "managedclusteraddon submariner" "$CLUSTER2_NAME" "hub" 600
 
     log_success "Submariner deployment initiated"
 }
@@ -606,8 +607,8 @@ patch_storagecluster() {
     #fi
 
     log_info "Checking if StorageCluster is ready on managed clusters..."
-    wait_for_resource "storagecluster ocs-storagecluster" "$CLUSTER1_NAME" 600
-    wait_for_resource "storagecluster ocs-storagecluster" "$CLUSTER2_NAME" 600
+    wait_for_resource "storagecluster ocs-storagecluster" "openshift-storage" "$CLUSTER1_NAME" 600
+    wait_for_resource "storagecluster ocs-storagecluster" "openshift-storage" "$CLUSTER2_NAME" 600
 
     # Patch cluster1
     if oc --context="$CLUSTER1_NAME" get storagecluster -n openshift-storage &> /dev/null; then
