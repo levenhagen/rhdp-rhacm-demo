@@ -504,7 +504,7 @@ prepare_odf_nodes() {
 }
 
 ###############################################################################
-# Step 10: Deploy ODF Policies with GitOps
+# Step 10: Deploy ODF Policies 
 ###############################################################################
 
 deploy_odf_policies() {
@@ -514,9 +514,10 @@ deploy_odf_policies() {
         return 0
     fi
     
-    log_info "Step 10: Deploying ODF policies with GitOps..."
+    log_info "Step 10: Deploying ODF policies..."
 
     cat <<EOF | oc apply -f -
+    ---
     apiVersion: policy.open-cluster-management.io/v1
     kind: Policy
     metadata:
