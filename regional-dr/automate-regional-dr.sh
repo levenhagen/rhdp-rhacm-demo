@@ -74,18 +74,36 @@ wait_for_resource() {
     local context=$3
     local timeout=${4:-300}
 
-    log_info "Waiting for $resource to exist in namespace $namespace..."
+    log_info "Waiting for $resource to exist in namespace $namespace (context: $context)..."
     local count=0
-    log_info "oc get \"$resource\" -n \"$namespace\" --context \"$context\""
+
+    # First wait for resource to exist
     while ! oc get "$resource" -n "$namespace" --context "$context" &>/dev/null; do
         sleep 5
         count=$((count + 5))
         if [ $count -ge $timeout ]; then
-            log_error "Timeout waiting for $resource"
+            log_error "Timeout waiting for $resource to exist"
             return 1
         fi
     done
-    log_success "$resource exists"
+
+    log_info "$resource exists, waiting for Phase: Ready..."
+
+    # Then wait for Phase: Ready
+    while true; do
+        local phase=$(oc get "$resource" -n "$namespace" --context "$context" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+        if [ "$phase" == "Ready" ]; then
+            log_success "$resource is Ready"
+            return 0
+        fi
+
+        sleep 5
+        count=$((count + 5))
+        if [ $count -ge $timeout ]; then
+            log_error "Timeout waiting for $resource to reach Phase: Ready (current phase: $phase)"
+            return 1
+        fi
+    done
 }
 
 check_prerequisites() {
