@@ -513,115 +513,124 @@ deploy_odf_policies() {
         log_warning "ODF policy already deployed, skipping..."
         return 0
     fi
-    
+
     log_info "Step 10: Deploying ODF policies..."
 
     cat <<EOF | oc apply -f -
-    ---
-    apiVersion: policy.open-cluster-management.io/v1
-    kind: Policy
-    metadata:
-      name: install-odf-operator
-      namespace: default
-    spec:
-      disabled: false
-      policy-templates:
-        - objectDefinition:
-            apiVersion: policy.open-cluster-management.io/v1beta1
-            kind: OperatorPolicy
-            metadata:
-              name: install-operator
-            spec:
-              complianceType: musthave
-              operatorGroup:
-                name: default
-                targetNamespaces:
-                  - openshift-storage
-              remediationAction: enforce
-              severity: critical
-              subscription:
-                name: odf-operator
-                namespace: openshift-storage
-                channel: stable-4.21
-                source: redhat-operators
-                sourceNamespace: openshift-marketplace
-                startingCSV: odf-operator.v4.21.2-rhodf
-              upgradeApproval: Automatic
-              versions:
-        - objectDefinition:
-            apiVersion: ocs.openshift.io/v1
-            kind: StorageCluster
-            metadata:
-              name: ocs-storagecluster
-              namespace: openshift-storage
-            spec:
-              arbiter:
-                enable: false
-              encryption:
-                clusterWide: false
-                enable: false
-                kms:
-                  enable: false
-                storageClass: false
-              flexibleScaling: false
-              managedResources:
-                cephBlockPools:
-                  defaultStorageClass: true
-              monDataDirHostPath: ''
-              network:
-                connections:
+---
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: install-odf-operator
+  namespace: default
+spec:
+  disabled: false
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1beta1
+        kind: OperatorPolicy
+        metadata:
+          name: install-operator
+        spec:
+          complianceType: musthave
+          operatorGroup:
+            name: default
+            targetNamespaces:
+              - openshift-storage
+          remediationAction: enforce
+          severity: critical
+          subscription:
+            name: odf-operator
+            namespace: openshift-storage
+            channel: stable-4.21
+            source: redhat-operators
+            sourceNamespace: openshift-marketplace
+            startingCSV: odf-operator.v4.21.2-rhodf
+          upgradeApproval: Automatic
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: install-storagecluster
+        spec:
+          remediationAction: enforce
+          severity: critical
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: ocs.openshift.io/v1
+                kind: StorageCluster
+                metadata:
+                  name: ocs-storagecluster
+                  namespace: openshift-storage
+                spec:
+                  arbiter:
+                    enable: false
                   encryption:
-                    enabled: false
-              nodeTopologies:
-                arbiterLocation: ''
-              resourceProfile: lean
-              storageDeviceSets:
-                - count: 1
-                  dataPVCTemplate:
-                    spec:
-                      accessModes:
-                        - ReadWriteOnce
-                      resources:
-                        requests:
-                          storage: 2Ti
-                      storageClassName: gp3-csi
-                      volumeMode: Block
-                  deviceClass: ssd
-                  name: ocs-deviceset-gp3-csi
-                  placement: {}
-                  portable: true
-                  replica: 3
-                  resources: {}
-    ---
-    apiVersion: cluster.open-cluster-management.io/v1beta1
-    kind: Placement
-    metadata:
-      name: install-odf-operator-placement
-      namespace: default
-    spec:
-      tolerations:
-        - key: cluster.open-cluster-management.io/unreachable
-          operator: Exists
-        - key: cluster.open-cluster-management.io/unavailable
-          operator: Exists
-      clusterSets:
-        - regional
-    ---
-    apiVersion: policy.open-cluster-management.io/v1
-    kind: PlacementBinding
-    metadata:
-      name: install-odf-operator-placement-binding
-      namespace: default
-    placementRef:
-      name: install-odf-operator-placement
-      kind: Placement
-      apiGroup: cluster.open-cluster-management.io
-    subjects:
-      - name: install-odf-operator
-        kind: Policy
-        apiGroup: policy.open-cluster-management.io                
+                    clusterWide: false
+                    enable: false
+                    kms:
+                      enable: false
+                    storageClass: false
+                  flexibleScaling: false
+                  managedResources:
+                    cephBlockPools:
+                      defaultStorageClass: true
+                  monDataDirHostPath: ''
+                  network:
+                    connections:
+                      encryption:
+                        enabled: false
+                  nodeTopologies:
+                    arbiterLocation: ''
+                  resourceProfile: lean
+                  storageDeviceSets:
+                    - count: 1
+                      dataPVCTemplate:
+                        spec:
+                          accessModes:
+                            - ReadWriteOnce
+                          resources:
+                            requests:
+                              storage: 2Ti
+                          storageClassName: gp3-csi
+                          volumeMode: Block
+                      deviceClass: ssd
+                      name: ocs-deviceset-gp3-csi
+                      placement: {}
+                      portable: true
+                      replica: 3
+                      resources: {}
+---
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Placement
+metadata:
+  name: install-odf-operator-placement
+  namespace: default
+spec:
+  tolerations:
+    - key: cluster.open-cluster-management.io/unreachable
+      operator: Exists
+    - key: cluster.open-cluster-management.io/unavailable
+      operator: Exists
+  clusterSets:
+    - regional
+---
+apiVersion: policy.open-cluster-management.io/v1
+kind: PlacementBinding
+metadata:
+  name: install-odf-operator-placement-binding
+  namespace: default
+placementRef:
+  name: install-odf-operator-placement
+  kind: Placement
+  apiGroup: cluster.open-cluster-management.io
+subjects:
+  - name: install-odf-operator
+    kind: Policy
+    apiGroup: policy.open-cluster-management.io
 EOF
-          
+
     log_info "Waiting for policies to be created..."
     sleep 60
 
