@@ -486,41 +486,48 @@ prepare_odf_nodes() {
 ###############################################################################
 # Step 10: Deploy ODF Policies with GitOps
 ###############################################################################
+
+# Check if ODF policy already exists
+    if oc get policy install-odf-operator -n default &> /dev/null; then
+        log_warning "ODF policy already deployed, skipping..."
+        return 0
+    fi
+
 deploy_odf_policies() {
     log_info "Step 11: Deploying ODF policies with GitOps..."
 
     cat <<EOF | oc apply -f -
-apiVersion: policy.open-cluster-management.io/v1
-kind: Policy
-metadata:
-  name: install-odf-operator
-  namespace: default
-EOF
-spec:
-  disabled: false
-  policy-templates:
-    - objectDefinition:
-        apiVersion: policy.open-cluster-management.io/v1beta1
-        kind: OperatorPolicy
-        metadata:
-          name: install-operator
-        spec:
-          complianceType: musthave
-          operatorGroup:
-            name: default
-            targetNamespaces:
-              - openshift-storage
-          remediationAction: enforce
-          severity: critical
-          subscription:
-            name: odf-operator
-            namespace: openshift-storage
-            channel: stable-4.21
-            source: redhat-operators
-            sourceNamespace: openshift-marketplace
-            startingCSV: odf-operator.v4.21.2-rhodf
-          upgradeApproval: Automatic
-          versions:
+    apiVersion: policy.open-cluster-management.io/v1
+    kind: Policy
+    metadata:
+      name: install-odf-operator
+      namespace: default
+    spec:
+      disabled: false
+      policy-templates:
+        - objectDefinition:
+            apiVersion: policy.open-cluster-management.io/v1beta1
+            kind: OperatorPolicy
+            metadata:
+              name: install-operator
+            spec:
+              complianceType: musthave
+              operatorGroup:
+                name: default
+                targetNamespaces:
+                  - openshift-storage
+              remediationAction: enforce
+              severity: critical
+              subscription:
+                name: odf-operator
+                namespace: openshift-storage
+                channel: stable-4.21
+                source: redhat-operators
+                sourceNamespace: openshift-marketplace
+                startingCSV: odf-operator.v4.21.2-rhodf
+              upgradeApproval: Automatic
+              versions:
+    EOF
           
     log_info "Waiting for policies to be created..."
     sleep 60
