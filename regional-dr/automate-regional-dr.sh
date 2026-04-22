@@ -527,7 +527,7 @@ deploy_odf_policies() {
                 startingCSV: odf-operator.v4.21.2-rhodf
               upgradeApproval: Automatic
               versions:
-    EOF
+EOF
           
     log_info "Waiting for policies to be created..."
     sleep 60
