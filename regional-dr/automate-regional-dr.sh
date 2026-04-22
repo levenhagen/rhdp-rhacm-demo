@@ -155,7 +155,7 @@ spec:
   gatewayConfig:
     gateways: 1
     aws:
-      instanceType: c5d.large
+      instanceType: m5.2xlarge
   IPSecNATTPort: 4500
   airGappedDeployment: false
   NATTEnable: true
@@ -181,7 +181,7 @@ spec:
   gatewayConfig:
     gateways: 1
     aws:
-      instanceType: c5d.large
+      instanceType: m5.2xlarge
   IPSecNATTPort: 4500
   airGappedDeployment: false
   NATTEnable: true
@@ -463,68 +463,7 @@ EOF
 }
 
 ###############################################################################
-# Step 9: Integrate Policy Generator with OpenShift GitOps
-###############################################################################
-integrate_policy_generator() {
-    log_info "Step 9: Integrating Policy Generator with OpenShift GitOps..."
-
-    cat <<EOF | oc apply -f -
-apiVersion: argoproj.io/v1alpha1
-kind: ArgoCD
-metadata:
-  name: openshift-gitops
-  namespace: openshift-gitops
-spec:
-  kustomizeBuildOptions: --enable-alpha-plugins
-  repo:
-    env:
-      - name: KUSTOMIZE_PLUGIN_HOME
-        value: /etc/kustomize/plugin
-    initContainers:
-      - name: policy-generator-install
-        image: registry.redhat.io/rhacm2/multicluster-operators-subscription-rhel9:v2.13.4-2
-        command:
-          - /bin/bash
-        args:
-          - '-c'
-          - >-
-            cp /policy-generator/PolicyGenerator-not-fips-compliant
-            /policy-generator-tmp/PolicyGenerator
-        volumeMounts:
-          - mountPath: /policy-generator-tmp
-            name: policy-generator
-    volumeMounts:
-      - mountPath: /etc/kustomize/plugin/policy.open-cluster-management.io/v1/policygenerator
-        name: policy-generator
-    volumes:
-      - name: policy-generator
-        emptyDir: {}
-  resourceCustomizations: |
-    argoproj.io/Application:
-      health.lua: |
-        hs = {}
-        hs.status = "Progressing"
-        hs.message = ""
-        if obj.status ~= nil then
-          if obj.status.health ~= nil then
-            hs.status = obj.status.health.status
-            if obj.status.health.message ~= nil then
-              hs.message = obj.status.health.message
-            end
-          end
-        end
-        return hs
-EOF
-
-    log_info "Waiting for ArgoCD to restart with policy generator..."
-    sleep 30
-    wait_for_pods "openshift-gitops" "app.kubernetes.io/name=openshift-gitops-repo-server" 300
-
-    log_success "Policy Generator integrated"
-}
-
-###############################################################################
-# Step 10: Prepare Nodes for ODF Deployment
+# Step 9: Prepare Nodes for ODF Deployment
 ###############################################################################
 prepare_odf_nodes() {
     log_info "Step 10: Preparing nodes for ODF deployment..."
@@ -545,52 +484,44 @@ prepare_odf_nodes() {
 }
 
 ###############################################################################
-# Step 11: Deploy ODF Policies with GitOps
+# Step 10: Deploy ODF Policies with GitOps
 ###############################################################################
 deploy_odf_policies() {
     log_info "Step 11: Deploying ODF policies with GitOps..."
 
     cat <<EOF | oc apply -f -
-apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
 metadata:
-  name: odf-policy-gen
-  namespace: openshift-gitops
-spec:
-  generators:
-    - git:
-        repoURL: $POLICY_REPO
-        revision: $POLICY_REVISION
-        directories:
-          - path: policygenerator/policy-sets/stable/openshift-plus
-  template:
-    metadata:
-      name: odf-policy-gen
-      labels:
-        velero.io/exclude-from-backup: "true"
-    spec:
-      project: default
-      source:
-        repoURL: $POLICY_REPO
-        targetRevision: $POLICY_REVISION
-        path: "{{path}}"
-      destination:
-        server: https://kubernetes.default.svc
-        namespace: $POLICIES_NAMESPACE
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-          - CreateNamespace=false
-          - PruneLast=true
-      ignoreDifferences:
-        - group: policy.open-cluster-management.io
-          kind: Policy
-          jsonPointers:
-            - /spec/disabled
+  name: install-odf-operator
+  namespace: default
 EOF
-
+spec:
+  disabled: false
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1beta1
+        kind: OperatorPolicy
+        metadata:
+          name: install-operator
+        spec:
+          complianceType: musthave
+          operatorGroup:
+            name: default
+            targetNamespaces:
+              - openshift-storage
+          remediationAction: enforce
+          severity: critical
+          subscription:
+            name: odf-operator
+            namespace: openshift-storage
+            channel: stable-4.21
+            source: redhat-operators
+            sourceNamespace: openshift-marketplace
+            startingCSV: odf-operator.v4.21.2-rhodf
+          upgradeApproval: Automatic
+          versions:
+          
     log_info "Waiting for policies to be created..."
     sleep 60
 
@@ -599,7 +530,7 @@ EOF
     local timeout=900
     local elapsed=0
     while [ $elapsed -lt $timeout ]; do
-        local violations=$(oc get policies -n "$POLICIES_NAMESPACE" --no-headers 2>/dev/null | wc -l || echo "0")
+        local violations=$(oc get policies -n default --no-headers 2>/dev/null | wc -l || echo "0")
         if [ "$violations" -gt 0 ]; then
             log_success "Policies created, monitoring deployment..."
             break
@@ -608,7 +539,7 @@ EOF
         elapsed=$((elapsed + 10))
     done
 
-    log_success "ODF policies deployed via GitOps"
+    log_success "ODF policies deployed"
 }
 
 ###############################################################################
