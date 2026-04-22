@@ -605,8 +605,9 @@ patch_storagecluster() {
     #    return 0
     #fi
 
-    log_info "Checking if StorageCluster exists on managed clusters..."
-    sleep 120  # Wait for ODF to be deployed first
+    log_info "Checking if StorageCluster is ready on managed clusters..."
+    wait_for_resource "storagecluster ocs-storagecluster" "$CLUSTER1_NAME" 600
+    wait_for_resource "storagecluster ocs-storagecluster" "$CLUSTER2_NAME" 600
 
     # Patch cluster1
     if oc --context="$CLUSTER1_NAME" get storagecluster -n openshift-storage &> /dev/null; then
