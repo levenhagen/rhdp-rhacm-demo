@@ -78,7 +78,7 @@ wait_for_resource() {
     local count=0
 
     # First wait for resource to exist
-    while ! oc get "$resource" -n "$namespace" --context "$context" &>/dev/null; do
+    while ! oc get $resource -n "$namespace" --context "$context" &>/dev/null; do
         sleep 5
         count=$((count + 5))
         if [ $count -ge $timeout ]; then
@@ -91,7 +91,7 @@ wait_for_resource() {
 
     # Then wait for Phase: Ready
     while true; do
-        local phase=$(oc get "$resource" -n "$namespace" --context "$context" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+        local phase=$(oc get $resource -n "$namespace" --context "$context" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
         if [ "$phase" == "Ready" ]; then
             log_success "$resource is Ready"
             return 0
