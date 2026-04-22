@@ -466,7 +466,7 @@ EOF
 # Step 9: Prepare Nodes for ODF Deployment
 ###############################################################################
 prepare_odf_nodes() {
-    log_info "Step 10: Preparing nodes for ODF deployment..."
+    log_info "Step 9: Preparing nodes for ODF deployment..."
 
     # Label worker nodes on cluster1
     log_info "Labeling worker nodes on $CLUSTER1_NAME..."
@@ -494,7 +494,7 @@ deploy_odf_policies() {
         return 0
     fi
     
-    log_info "Step 11: Deploying ODF policies with GitOps..."
+    log_info "Step 10: Deploying ODF policies with GitOps..."
 
     cat <<EOF | oc apply -f -
     apiVersion: policy.open-cluster-management.io/v1
@@ -550,10 +550,10 @@ deploy_odf_policies() {
 }
 
 ###############################################################################
-# Step 12: Patch StorageCluster CR
+# Step 11: Patch StorageCluster CR
 ###############################################################################
 patch_storagecluster() {
-    log_info "Step 12: Patching StorageCluster CR for GlobalNet..."
+    log_info "Step 11: Patching StorageCluster CR for GlobalNet..."
 
     # Check if GlobalNet is enabled by checking for Submariner
     if ! oc get submariner -A &> /dev/null; then
@@ -584,10 +584,10 @@ patch_storagecluster() {
 }
 
 ###############################################################################
-# Step 13: Install ODF MultiCluster Orchestrator
+# Step 12: Install ODF MultiCluster Orchestrator
 ###############################################################################
 install_odf_mco() {
-    log_info "Step 13: Installing ODF MultiCluster Orchestrator..."
+    log_info "Step 12: Installing ODF MultiCluster Orchestrator..."
 
     # Check if already installed
     if oc get deployment odf-multicluster-console -n openshift-operators &> /dev/null; then
