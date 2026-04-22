@@ -556,10 +556,10 @@ patch_storagecluster() {
     log_info "Step 11: Patching StorageCluster CR for GlobalNet..."
 
     # Check if GlobalNet is enabled by checking for Submariner
-    if ! oc get submariner -A &> /dev/null; then
-        log_warning "Submariner not detected, skipping StorageCluster patch"
-        return 0
-    fi
+    #if ! oc get submariner -A &> /dev/null; then
+    #    log_warning "Submariner not detected, skipping StorageCluster patch"
+    #    return 0
+    #fi
 
     log_info "Checking if StorageCluster exists on managed clusters..."
     sleep 120  # Wait for ODF to be deployed first
