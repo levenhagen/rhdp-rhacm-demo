@@ -76,7 +76,7 @@ wait_for_resource() {
 
     log_info "Waiting for $resource to exist in namespace $namespace..."
     local count=0
-    while ! oc get "$resource" -n "$namespace" --context $context &>/dev/null; do
+    while ! oc get "$resource" -n "$namespace" --context "$context" &>/dev/null; do
         sleep 5
         count=$((count + 5))
         if [ $count -ge $timeout ]; then
