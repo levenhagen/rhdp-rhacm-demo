@@ -527,6 +527,50 @@ deploy_odf_policies() {
                 startingCSV: odf-operator.v4.21.2-rhodf
               upgradeApproval: Automatic
               versions:
+        - objectDefinition:
+            apiVersion: ocs.openshift.io/v1
+            kind: StorageCluster
+            metadata:
+              name: ocs-storagecluster
+              namespace: openshift-storage
+            spec:
+              arbiter:
+                enable: false
+              encryption:
+                clusterWide: false
+                enable: false
+                kms:
+                  enable: false
+                storageClass: false
+              flexibleScaling: false
+              managedResources:
+                cephBlockPools:
+                  defaultStorageClass: true
+              monDataDirHostPath: ''
+              network:
+                connections:
+                  encryption:
+                    enabled: false
+              nodeTopologies:
+                arbiterLocation: ''
+              resourceProfile: lean
+              storageDeviceSets:
+                - count: 1
+                  dataPVCTemplate:
+                    spec:
+                      accessModes:
+                        - ReadWriteOnce
+                      resources:
+                        requests:
+                          storage: 2Ti
+                      storageClassName: gp3-csi
+                      volumeMode: Block
+                  deviceClass: ssd
+                  name: ocs-deviceset-gp3-csi
+                  placement: {}
+                  portable: true
+                  replica: 3
+                  resources: {}            
 EOF
           
     log_info "Waiting for policies to be created..."
