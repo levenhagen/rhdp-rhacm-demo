@@ -590,7 +590,35 @@ deploy_odf_policies() {
                   placement: {}
                   portable: true
                   replica: 3
-                  resources: {}            
+                  resources: {}
+        - objectDefinition:
+            apiVersion: cluster.open-cluster-management.io/v1beta1
+            kind: Placement
+            metadata:
+              name: install-odf-operator-placement
+              namespace: default
+            spec:
+              tolerations:
+                - key: cluster.open-cluster-management.io/unreachable
+                  operator: Exists
+                - key: cluster.open-cluster-management.io/unavailable
+                  operator: Exists
+              clusterSets:
+                - regional
+        - objectDefinition:
+            apiVersion: policy.open-cluster-management.io/v1
+            kind: PlacementBinding
+            metadata:
+              name: install-odf-operator-placement-binding
+              namespace: default
+            placementRef:
+              name: install-odf-operator-placement
+              kind: Placement
+              apiGroup: cluster.open-cluster-management.io
+            subjects:
+              - name: install-odf-operator
+                kind: Policy
+                apiGroup: policy.open-cluster-management.io                
 EOF
           
     log_info "Waiting for policies to be created..."
