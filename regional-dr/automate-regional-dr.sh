@@ -487,13 +487,13 @@ prepare_odf_nodes() {
 # Step 10: Deploy ODF Policies with GitOps
 ###############################################################################
 
-# Check if ODF policy already exists
+deploy_odf_policies() {
+    # Check if ODF policy already exists
     if oc get policy install-odf-operator -n default &> /dev/null; then
         log_warning "ODF policy already deployed, skipping..."
         return 0
     fi
-
-deploy_odf_policies() {
+    
     log_info "Step 11: Deploying ODF policies with GitOps..."
 
     cat <<EOF | oc apply -f -
