@@ -159,8 +159,12 @@ check_prerequisites() {
       KUBECONFIG="$HOME"/kubeconfig-cluster2/kubeconfig kubectl config rename-context admin cluster2
       echo "kubeconfig cluster2 configured"
     fi
-    
+
+    kubectl config rename-context admin hub
     export KUBECONFIG=~/.kube/config:~/kubeconfig-cluster1/kubeconfig:~/kubeconfig-cluster2/kubeconfig
+    echo "Showing current contexts"
+    kubectl config view --flatten
+    kubectl config get-contexts
 
     log_success "Prerequisites check passed"
 }
