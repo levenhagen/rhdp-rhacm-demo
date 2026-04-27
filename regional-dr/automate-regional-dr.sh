@@ -13,6 +13,7 @@
 # - Step 10: Deploy ODF Policies with GitOps
 # - Step 11: Patch StorageCluster CR (if GlobalNet enabled)
 # - Step 12: Install ODF MultiCluster Orchestrator
+# - Step 13: Configure SSL Access Across Clusters
 #
 # Prerequisites:
 # - oc CLI tool installed and logged into RHACM hub cluster
@@ -724,6 +725,99 @@ EOF
 }
 
 ###############################################################################
+# Step 13: Configure SSL Access Across Clusters
+###############################################################################
+configure_ssl_access() {
+    log_info "Step 13: Configuring SSL access across clusters..."
+
+    # Extract ingress certificate from cluster1
+    log_info "Extracting ingress certificate from $CLUSTER1_NAME..."
+    CLUSTER1_CERT=$(oc --context="$CLUSTER1_NAME" get cm default-ingress-cert -n openshift-config-managed -o jsonpath="{['data']['ca-bundle\.crt']}")
+
+    if [ -z "$CLUSTER1_CERT" ]; then
+        log_error "Failed to extract certificate from $CLUSTER1_NAME"
+        return 1
+    fi
+
+    # Extract ingress certificate from cluster2
+    log_info "Extracting ingress certificate from $CLUSTER2_NAME..."
+    CLUSTER2_CERT=$(oc --context="$CLUSTER2_NAME" get cm default-ingress-cert -n openshift-config-managed -o jsonpath="{['data']['ca-bundle\.crt']}")
+
+    if [ -z "$CLUSTER2_CERT" ]; then
+        log_error "Failed to extract certificate from $CLUSTER2_NAME"
+        return 1
+    fi
+
+    # Create temporary file for merged certificates
+    MERGED_CERT_FILE=$(mktemp)
+
+    # Merge certificates from both clusters
+    log_info "Merging certificates from both clusters..."
+    cat > "$MERGED_CERT_FILE" <<EOF
+$CLUSTER1_CERT
+
+$CLUSTER2_CERT
+EOF
+
+    # Apply merged certificate ConfigMap to cluster1
+    log_info "Applying merged certificate ConfigMap to $CLUSTER1_NAME..."
+    cat <<EOF | oc --context="$CLUSTER1_NAME" apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-ca-bundle
+  namespace: openshift-config
+data:
+  ca-bundle.crt: |
+$(cat "$MERGED_CERT_FILE" | sed 's/^/    /')
+EOF
+
+    # Apply merged certificate ConfigMap to cluster2
+    log_info "Applying merged certificate ConfigMap to $CLUSTER2_NAME..."
+    cat <<EOF | oc --context="$CLUSTER2_NAME" apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-ca-bundle
+  namespace: openshift-config
+data:
+  ca-bundle.crt: |
+$(cat "$MERGED_CERT_FILE" | sed 's/^/    /')
+EOF
+
+    # Apply merged certificate ConfigMap to hub cluster
+    log_info "Applying merged certificate ConfigMap to hub cluster..."
+    cat <<EOF | oc --context="hub" apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-ca-bundle
+  namespace: openshift-config
+data:
+  ca-bundle.crt: |
+$(cat "$MERGED_CERT_FILE" | sed 's/^/    /')
+EOF
+
+    # Clean up temporary file
+    rm -f "$MERGED_CERT_FILE"
+
+    # Patch the cluster proxy configuration to use the custom CA bundle on all clusters
+    log_info "Patching cluster proxy configuration on $CLUSTER1_NAME..."
+    oc --context="$CLUSTER1_NAME" patch proxy cluster --type=merge \
+      --patch='{"spec":{"trustedCA":{"name":"user-ca-bundle"}}}'
+
+    log_info "Patching cluster proxy configuration on $CLUSTER2_NAME..."
+    oc --context="$CLUSTER2_NAME" patch proxy cluster --type=merge \
+      --patch='{"spec":{"trustedCA":{"name":"user-ca-bundle"}}}'
+
+    log_info "Patching cluster proxy configuration on hub cluster..."
+    oc --context="hub" patch proxy cluster --type=merge \
+      --patch='{"spec":{"trustedCA":{"name":"user-ca-bundle"}}}'
+
+    log_success "SSL access across clusters configured"
+}
+
+###############################################################################
 # Main execution
 ###############################################################################
 main() {
@@ -766,6 +860,9 @@ main() {
     install_odf_mco
     echo ""
 
+    configure_ssl_access
+    echo ""
+
     echo "============================================================================="
     log_success "Automation completed successfully!"
     echo "============================================================================="
@@ -774,8 +871,8 @@ main() {
     echo "  1. Wait 10-15 minutes for ODF deployment to complete"
     echo "  2. Verify ServiceExports exist (should see 12):"
     echo "     oc get serviceexport -n openshift-storage"
-    echo "  3. Proceed with Step 14: Configure SSL access across clusters"
-    echo "     (See documentation for manual steps)"
+    echo "  3. Proceed with Step 14: Create DRPolicy and DRCluster resources"
+    echo "     (See documentation for next steps)"
     echo ""
     echo "============================================================================="
 }
