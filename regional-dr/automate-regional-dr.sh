@@ -9,11 +9,10 @@
 # - Step 6: Integrate OpenShift GitOps and RHACM
 # - Step 7: Configure ClusterSet Bindings
 # - Step 8: Adjust ArgoCD Cluster-Admin Permissions
-# - Step 9: Integrate Policy Generator with OpenShift GitOps
-# - Step 10: Prepare Nodes for ODF Deployment
-# - Step 11: Deploy ODF Policies with GitOps
-# - Step 12: Patch StorageCluster CR (if GlobalNet enabled)
-# - Step 13: Install ODF MultiCluster Orchestrator
+# - Step 9: Prepare Nodes for ODF Deployment
+# - Step 10: Deploy ODF Policies with GitOps
+# - Step 11: Patch StorageCluster CR (if GlobalNet enabled)
+# - Step 12: Install ODF MultiCluster Orchestrator
 #
 # Prerequisites:
 # - oc CLI tool installed and logged into RHACM hub cluster
