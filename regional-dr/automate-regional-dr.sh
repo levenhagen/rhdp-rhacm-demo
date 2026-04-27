@@ -146,8 +146,8 @@ check_prerequisites() {
       echo "Secret cluster1-kubeconfig not found"
       exit 1
     else
-      oc -n cluster1 extract secret/"$SECRET_cluster1" --keys=kubeconfig --to=./kubeconfig-cluster1 --confirm
-      KUBECONFIG=./kubeconfig-cluster1/kubeconfig kubectl config rename-context admin cluster1
+      oc -n cluster1 extract secret/"$SECRET_cluster1" --keys=kubeconfig --to=~/kubeconfig-cluster1 --confirm
+      KUBECONFIG=~/kubeconfig-cluster1/kubeconfig kubectl config rename-context admin cluster1
       echo "kubeconfig cluster1 configured"
     fi
 
@@ -155,8 +155,8 @@ check_prerequisites() {
       echo "Secret cluster2-kubeconfig not found"
       exit 1
     else
-      oc -n cluster1 extract secret/"$SECRET_cluster2" --keys=kubeconfig --to=./kubeconfig-cluster2 --confirm
-      KUBECONFIG=./kubeconfig-cluster2/kubeconfig kubectl config rename-context admin cluster2
+      oc -n cluster2 extract secret/"$SECRET_cluster2" --keys=kubeconfig --to=~/kubeconfig-cluster2 --confirm
+      KUBECONFIG=~/kubeconfig-cluster2/kubeconfig kubectl config rename-context admin cluster2
       echo "kubeconfig cluster2 configured"
     fi
     
