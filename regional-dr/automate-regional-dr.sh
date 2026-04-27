@@ -138,6 +138,30 @@ check_prerequisites() {
         exit 1
     fi
 
+    #Configuring kubeconfigs
+    SECRET_cluster1=$(oc -n cluster1 get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^cluster1.*kubeconfig$' | head -n1)
+    SECRET_cluster2=$(oc -n cluster2 get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^cluster1.*kubeconfig$' | head -n1)
+
+    if [ -z "$SECRET_cluster1" ]; then
+      echo "Secret cluster1-kubeconfig not found"
+      exit 1
+    else
+      oc -n cluster1 extract secret/"$SECRET_cluster1" --keys=kubeconfig --to=./kubeconfig-cluster1
+      KUBECONFIG=./kubeconfig-cluster1/kubeconfig kubectl config rename-context admin cluster1
+      echo "kubeconfig cluster1 configured"
+    fi
+
+    if [ -z "$SECRET_cluster2" ]; then
+      echo "Secret cluster2-kubeconfig not found"
+      exit 1
+    else
+      oc -n cluster1 extract secret/"$SECRET_cluster2" --keys=kubeconfig --to=./kubeconfig-cluster2
+      KUBECONFIG=./kubeconfig-cluster2/kubeconfig kubectl config rename-context admin cluster2
+      echo "kubeconfig cluster2 configured"
+    fi
+    
+    export KUBECONFIG=~/.kube/config:~/kubeconfig-cluster1/kubeconfig:~/kubeconfig-cluster2/kubeconfig
+
     log_success "Prerequisites check passed"
 }
 
