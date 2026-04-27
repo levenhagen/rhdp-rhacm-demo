@@ -140,7 +140,7 @@ check_prerequisites() {
 
     #Configuring kubeconfigs
     SECRET_cluster1=$(oc -n cluster1 get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^cluster1.*kubeconfig$' | head -n1)
-    SECRET_cluster2=$(oc -n cluster2 get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^cluster1.*kubeconfig$' | head -n1)
+    SECRET_cluster2=$(oc -n cluster2 get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^cluster2.*kubeconfig$' | head -n1)
 
     if [ -z "$SECRET_cluster1" ]; then
       echo "Secret cluster1-kubeconfig not found"
