@@ -170,9 +170,15 @@ check_prerequisites() {
     CRT=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-certificate-data"]')
     KEY=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-key-data"]')
 
+    # Create temporary files for the certificates
+    TMP_CRT=$(mktemp)
+    TMP_KEY=$(mktemp)
+    echo "$CRT" | base64 -d > "$TMP_CRT"
+    echo "$KEY" | base64 -d > "$TMP_KEY"
+
     kubectl config set-credentials "cluster1-admin" \
-      --client-certificate-data="$CRT" \
-      --client-key-data="$KEY" \
+      --client-certificate="$TMP_CRT" \
+      --client-key="$TMP_KEY" \
       --embed-certs=true
 
     kubectl config set-context cluster1 \
@@ -182,6 +188,9 @@ check_prerequisites() {
     kubectl config delete-user admin 2>/dev/null || true
     kubectl config delete-context admin 2>/dev/null || true
     kubectl config use-context cluster1
+
+    # Clean up temporary files
+    rm -f "$TMP_CRT" "$TMP_KEY"
 
     log_info "Configured kubeconfig for cluster1"
 
@@ -195,9 +204,15 @@ check_prerequisites() {
     CRT=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-certificate-data"]')
     KEY=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-key-data"]')
 
+    # Create temporary files for the certificates
+    TMP_CRT=$(mktemp)
+    TMP_KEY=$(mktemp)
+    echo "$CRT" | base64 -d > "$TMP_CRT"
+    echo "$KEY" | base64 -d > "$TMP_KEY"
+
     kubectl config set-credentials "cluster2-admin" \
-      --client-certificate-data="$CRT" \
-      --client-key-data="$KEY" \
+      --client-certificate="$TMP_CRT" \
+      --client-key="$TMP_KEY" \
       --embed-certs=true
 
     kubectl config set-context cluster2 \
@@ -207,6 +222,9 @@ check_prerequisites() {
     kubectl config delete-user admin 2>/dev/null || true
     kubectl config delete-context admin 2>/dev/null || true
     kubectl config use-context cluster2
+
+    # Clean up temporary files
+    rm -f "$TMP_CRT" "$TMP_KEY"
 
     log_info "Configured kubeconfig for cluster2"
 
@@ -226,10 +244,16 @@ check_prerequisites() {
         CRT=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-certificate-data"]')
         KEY=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-key-data"]')
 
-        if [ -n "$CRT" ] && [ -n "$KEY" ]; then
+        if [ -n "$CRT" ] && [ -n "$KEY" ] && [ "$CRT" != "null" ] && [ "$KEY" != "null" ]; then
+            # Create temporary files for the certificates
+            TMP_CRT=$(mktemp)
+            TMP_KEY=$(mktemp)
+            echo "$CRT" | base64 -d > "$TMP_CRT"
+            echo "$KEY" | base64 -d > "$TMP_KEY"
+
             kubectl config set-credentials "hub-admin" \
-              --client-certificate-data="$CRT" \
-              --client-key-data="$KEY" \
+              --client-certificate="$TMP_CRT" \
+              --client-key="$TMP_KEY" \
               --embed-certs=true
 
             kubectl config set-context hub \
@@ -239,6 +263,9 @@ check_prerequisites() {
             kubectl config delete-user admin 2>/dev/null || true
             kubectl config delete-context "$CURRENT_CTX" 2>/dev/null || true
             kubectl config use-context hub
+
+            # Clean up temporary files
+            rm -f "$TMP_CRT" "$TMP_KEY"
 
             log_info "Configured hub kubeconfig"
         else
