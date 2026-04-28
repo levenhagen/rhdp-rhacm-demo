@@ -141,6 +141,12 @@ check_prerequisites() {
     #Configuring kubeconfigs
     log_info "Extracting and configuring kubeconfigs for managed clusters..."
 
+    # Check if jq is installed
+    if ! command -v jq &> /dev/null; then
+        log_error "jq is required but not installed. Please install jq first."
+        exit 1
+    fi
+
     SECRET_cluster1=$(oc -n cluster1 get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^cluster1.*kubeconfig$' | head -n1)
     SECRET_cluster2=$(oc -n cluster2 get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^cluster2.*kubeconfig$' | head -n1)
 
@@ -156,15 +162,35 @@ check_prerequisites() {
 
     # Extract cluster1 kubeconfig
     oc -n cluster1 extract secret/"$SECRET_cluster1" --keys=kubeconfig --to="$HOME"/kubeconfig-cluster1 --confirm
-    # Rename context in the cluster1 kubeconfig file
-    kubectl config rename-context admin cluster1 --kubeconfig="$HOME"/kubeconfig-cluster1/kubeconfig 2>/dev/null || true
-    log_info "Extracted kubeconfig for cluster1"
+
+    # Rename context and user in cluster1 kubeconfig to avoid conflicts
+    log_info "Renaming context and user in cluster1 kubeconfig..."
+    jq '
+      .users |= map(if .name == "admin" then .name = "cluster1-admin" else . end) |
+      .contexts |= map(
+        if .name == "admin" then .name = "cluster1" else . end |
+        if .context.user == "admin" then .context.user = "cluster1-admin" else . end
+      ) |
+      .["current-context"] = "cluster1"
+    ' "$HOME"/kubeconfig-cluster1/kubeconfig > "$HOME"/kubeconfig-cluster1/kubeconfig.tmp
+    mv "$HOME"/kubeconfig-cluster1/kubeconfig.tmp "$HOME"/kubeconfig-cluster1/kubeconfig
+    log_info "Configured kubeconfig for cluster1"
 
     # Extract cluster2 kubeconfig
     oc -n cluster2 extract secret/"$SECRET_cluster2" --keys=kubeconfig --to="$HOME"/kubeconfig-cluster2 --confirm
-    # Rename context in the cluster2 kubeconfig file
-    kubectl config rename-context admin cluster2 --kubeconfig="$HOME"/kubeconfig-cluster2/kubeconfig 2>/dev/null || true
-    log_info "Extracted kubeconfig for cluster2"
+
+    # Rename context and user in cluster2 kubeconfig to avoid conflicts
+    log_info "Renaming context and user in cluster2 kubeconfig..."
+    jq '
+      .users |= map(if .name == "admin" then .name = "cluster2-admin" else . end) |
+      .contexts |= map(
+        if .name == "admin" then .name = "cluster2" else . end |
+        if .context.user == "admin" then .context.user = "cluster2-admin" else . end
+      ) |
+      .["current-context"] = "cluster2"
+    ' "$HOME"/kubeconfig-cluster2/kubeconfig > "$HOME"/kubeconfig-cluster2/kubeconfig.tmp
+    mv "$HOME"/kubeconfig-cluster2/kubeconfig.tmp "$HOME"/kubeconfig-cluster2/kubeconfig
+    log_info "Configured kubeconfig for cluster2"
 
     # Backup current kubeconfig
     if [ -f ~/.kube/config ]; then
@@ -172,13 +198,20 @@ check_prerequisites() {
         log_info "Backed up existing kubeconfig"
     fi
 
-    # Check and rename hub context if needed
+    # Rename hub context and user if needed
     CURRENT_CTX=$(kubectl config current-context 2>/dev/null || echo "")
-    if [ -n "$CURRENT_CTX" ] && [ "$CURRENT_CTX" != "hub" ]; then
-        kubectl config rename-context "$CURRENT_CTX" hub
-        log_info "Renamed current context to 'hub'"
-    elif [ "$CURRENT_CTX" = "hub" ]; then
-        log_info "Hub context already configured"
+    if [ -n "$CURRENT_CTX" ]; then
+        log_info "Renaming context and user in hub kubeconfig..."
+        jq '
+          .users |= map(if .name == "admin" then .name = "hub-admin" else . end) |
+          .contexts |= map(
+            if .name == "'"$CURRENT_CTX"'" then .name = "hub" else . end |
+            if .context.user == "admin" then .context.user = "hub-admin" else . end
+          ) |
+          .["current-context"] = "hub"
+        ' ~/.kube/config > ~/.kube/config.tmp
+        mv ~/.kube/config.tmp ~/.kube/config
+        log_info "Renamed hub context and user"
     fi
 
     # Merge all kubeconfigs into a single config file
