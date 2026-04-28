@@ -139,41 +139,58 @@ check_prerequisites() {
     fi
 
     #Configuring kubeconfigs
+    log_info "Extracting and configuring kubeconfigs for managed clusters..."
+
     SECRET_cluster1=$(oc -n cluster1 get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^cluster1.*kubeconfig$' | head -n1)
     SECRET_cluster2=$(oc -n cluster2 get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^cluster2.*kubeconfig$' | head -n1)
 
     if [ -z "$SECRET_cluster1" ]; then
       log_error "Secret cluster1-kubeconfig not found"
       exit 1
-    else
-      oc -n cluster1 extract secret/"$SECRET_cluster1" --keys=kubeconfig --to="$HOME"/kubeconfig-cluster1 --confirm
-      # Rename context in the specific kubeconfig file
-      kubectl config rename-context admin cluster1 --kubeconfig="$HOME"/kubeconfig-cluster1/kubeconfig 2>/dev/null || true
-      log_info "kubeconfig cluster1 configured"
     fi
 
     if [ -z "$SECRET_cluster2" ]; then
       log_error "Secret cluster2-kubeconfig not found"
       exit 1
-    else
-      oc -n cluster2 extract secret/"$SECRET_cluster2" --keys=kubeconfig --to="$HOME"/kubeconfig-cluster2 --confirm
-      # Rename context in the specific kubeconfig file
-      kubectl config rename-context admin cluster2 --kubeconfig="$HOME"/kubeconfig-cluster2/kubeconfig 2>/dev/null || true
-      log_info "kubeconfig cluster2 configured"
+    fi
+
+    # Extract cluster1 kubeconfig
+    oc -n cluster1 extract secret/"$SECRET_cluster1" --keys=kubeconfig --to="$HOME"/kubeconfig-cluster1 --confirm
+    # Rename context in the cluster1 kubeconfig file
+    kubectl config rename-context admin cluster1 --kubeconfig="$HOME"/kubeconfig-cluster1/kubeconfig 2>/dev/null || true
+    log_info "Extracted kubeconfig for cluster1"
+
+    # Extract cluster2 kubeconfig
+    oc -n cluster2 extract secret/"$SECRET_cluster2" --keys=kubeconfig --to="$HOME"/kubeconfig-cluster2 --confirm
+    # Rename context in the cluster2 kubeconfig file
+    kubectl config rename-context admin cluster2 --kubeconfig="$HOME"/kubeconfig-cluster2/kubeconfig 2>/dev/null || true
+    log_info "Extracted kubeconfig for cluster2"
+
+    # Backup current kubeconfig
+    if [ -f ~/.kube/config ]; then
+        cp ~/.kube/config ~/.kube/config.backup.$(date +%s)
+        log_info "Backed up existing kubeconfig"
     fi
 
     # Check and rename hub context if needed
     CURRENT_CTX=$(kubectl config current-context 2>/dev/null || echo "")
-
-    if [ "$CURRENT_CTX" != "hub" ]; then
-        kubectl config rename-context "$CURRENT_CTX" hub 2>/dev/null || true
-        log_info "kubeconfig hub context configured..."
-    else
-        log_info "kubeconfig hub context already configured..."
+    if [ -n "$CURRENT_CTX" ] && [ "$CURRENT_CTX" != "hub" ]; then
+        kubectl config rename-context "$CURRENT_CTX" hub
+        log_info "Renamed current context to 'hub'"
+    elif [ "$CURRENT_CTX" = "hub" ]; then
+        log_info "Hub context already configured"
     fi
 
-    # Merge all kubeconfigs
-    export KUBECONFIG=~/.kube/config:~/kubeconfig-cluster1/kubeconfig:~/kubeconfig-cluster2/kubeconfig
+    # Merge all kubeconfigs into a single config file
+    log_info "Merging kubeconfigs..."
+    KUBECONFIG=~/.kube/config:~/kubeconfig-cluster1/kubeconfig:~/kubeconfig-cluster2/kubeconfig \
+        kubectl config view --flatten > ~/.kube/config.merged
+
+    # Replace the original config with the merged one
+    mv ~/.kube/config.merged ~/.kube/config
+
+    # Export for the script's use
+    export KUBECONFIG=~/.kube/config
 
     # Verify contexts are available
     log_info "Verifying kubeconfig contexts..."
@@ -192,7 +209,7 @@ check_prerequisites() {
         exit 1
     fi
 
-    log_info "All contexts verified successfully"
+    log_success "All contexts configured and verified successfully"
     kubectl config get-contexts
 
     log_success "Prerequisites check passed"
@@ -547,9 +564,13 @@ prepare_odf_nodes() {
 
     # Label worker nodes on cluster1
     log_info "Labeling worker nodes on $CLUSTER1_NAME..."
-    local cluster1_nodes=$(oc --context="$CLUSTER1_NAME" get nodes -l node-role.kubernetes.io/worker= -o name 2>&1)
+
+    # Get nodes and capture only stdout
+    local cluster1_nodes
+    cluster1_nodes=$(oc --context="$CLUSTER1_NAME" get nodes -l node-role.kubernetes.io/worker= -o name 2>/dev/null)
     if [ $? -ne 0 ]; then
-        log_error "Failed to get worker nodes from $CLUSTER1_NAME: $cluster1_nodes"
+        log_error "Failed to get worker nodes from $CLUSTER1_NAME - verify cluster1 context is properly configured"
+        log_error "Run: kubectl config get-contexts cluster1"
         exit 1
     fi
 
@@ -558,20 +579,28 @@ prepare_odf_nodes() {
         exit 1
     fi
 
-    for node in $cluster1_nodes; do
-        log_info "Labeling node: $node on $CLUSTER1_NAME"
-        if ! oc --context="$CLUSTER1_NAME" label "$node" cluster.ocs.openshift.io/openshift-storage="" --overwrite; then
-            log_error "Failed to label node $node on $CLUSTER1_NAME"
-            exit 1
+    local node_count=0
+    while IFS= read -r node; do
+        if [ -n "$node" ]; then
+            log_info "Labeling $node on $CLUSTER1_NAME"
+            if ! oc --context="$CLUSTER1_NAME" label "$node" cluster.ocs.openshift.io/openshift-storage="" --overwrite 2>/dev/null; then
+                log_error "Failed to label node $node on $CLUSTER1_NAME"
+                exit 1
+            fi
+            node_count=$((node_count + 1))
         fi
-    done
-    log_success "Successfully labeled worker nodes on $CLUSTER1_NAME"
+    done <<< "$cluster1_nodes"
+    log_success "Successfully labeled $node_count worker node(s) on $CLUSTER1_NAME"
 
     # Label worker nodes on cluster2
     log_info "Labeling worker nodes on $CLUSTER2_NAME..."
-    local cluster2_nodes=$(oc --context="$CLUSTER2_NAME" get nodes -l node-role.kubernetes.io/worker= -o name 2>&1)
+
+    # Get nodes and capture only stdout
+    local cluster2_nodes
+    cluster2_nodes=$(oc --context="$CLUSTER2_NAME" get nodes -l node-role.kubernetes.io/worker= -o name 2>/dev/null)
     if [ $? -ne 0 ]; then
-        log_error "Failed to get worker nodes from $CLUSTER2_NAME: $cluster2_nodes"
+        log_error "Failed to get worker nodes from $CLUSTER2_NAME - verify cluster2 context is properly configured"
+        log_error "Run: kubectl config get-contexts cluster2"
         exit 1
     fi
 
@@ -580,14 +609,18 @@ prepare_odf_nodes() {
         exit 1
     fi
 
-    for node in $cluster2_nodes; do
-        log_info "Labeling node: $node on $CLUSTER2_NAME"
-        if ! oc --context="$CLUSTER2_NAME" label "$node" cluster.ocs.openshift.io/openshift-storage="" --overwrite; then
-            log_error "Failed to label node $node on $CLUSTER2_NAME"
-            exit 1
+    node_count=0
+    while IFS= read -r node; do
+        if [ -n "$node" ]; then
+            log_info "Labeling $node on $CLUSTER2_NAME"
+            if ! oc --context="$CLUSTER2_NAME" label "$node" cluster.ocs.openshift.io/openshift-storage="" --overwrite 2>/dev/null; then
+                log_error "Failed to label node $node on $CLUSTER2_NAME"
+                exit 1
+            fi
+            node_count=$((node_count + 1))
         fi
-    done
-    log_success "Successfully labeled worker nodes on $CLUSTER2_NAME"
+    done <<< "$cluster2_nodes"
+    log_success "Successfully labeled $node_count worker node(s) on $CLUSTER2_NAME"
 
     log_success "All nodes labeled for ODF deployment"
 }
