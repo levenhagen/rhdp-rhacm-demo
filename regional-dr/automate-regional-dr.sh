@@ -163,33 +163,51 @@ check_prerequisites() {
     # Extract cluster1 kubeconfig
     oc -n cluster1 extract secret/"$SECRET_cluster1" --keys=kubeconfig --to="$HOME"/kubeconfig-cluster1 --confirm
 
-    # Rename context and user in cluster1 kubeconfig to avoid conflicts
-    log_info "Renaming context and user in cluster1 kubeconfig..."
-    jq '
-      .users |= map(if .name == "admin" then .name = "cluster1-admin" else . end) |
-      .contexts |= map(
-        if .name == "admin" then .name = "cluster1" else . end |
-        if .context.user == "admin" then .context.user = "cluster1-admin" else . end
-      ) |
-      .["current-context"] = "cluster1"
-    ' "$HOME"/kubeconfig-cluster1/kubeconfig > "$HOME"/kubeconfig-cluster1/kubeconfig.tmp
-    mv "$HOME"/kubeconfig-cluster1/kubeconfig.tmp "$HOME"/kubeconfig-cluster1/kubeconfig
+    # Rename user and context in cluster1 kubeconfig to avoid conflicts
+    log_info "Configuring cluster1 kubeconfig with unique credentials..."
+    export KUBECONFIG="$HOME"/kubeconfig-cluster1/kubeconfig
+
+    CRT=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-certificate-data"]')
+    KEY=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-key-data"]')
+
+    kubectl config set-credentials "cluster1-admin" \
+      --client-certificate-data="$CRT" \
+      --client-key-data="$KEY" \
+      --embed-certs=true
+
+    kubectl config set-context cluster1 \
+      --cluster=$(kubectl config view -o json | jq -r '.contexts[] | select(.name=="admin") | .context.cluster') \
+      --user=cluster1-admin
+
+    kubectl config delete-user admin 2>/dev/null || true
+    kubectl config delete-context admin 2>/dev/null || true
+    kubectl config use-context cluster1
+
     log_info "Configured kubeconfig for cluster1"
 
     # Extract cluster2 kubeconfig
     oc -n cluster2 extract secret/"$SECRET_cluster2" --keys=kubeconfig --to="$HOME"/kubeconfig-cluster2 --confirm
 
-    # Rename context and user in cluster2 kubeconfig to avoid conflicts
-    log_info "Renaming context and user in cluster2 kubeconfig..."
-    jq '
-      .users |= map(if .name == "admin" then .name = "cluster2-admin" else . end) |
-      .contexts |= map(
-        if .name == "admin" then .name = "cluster2" else . end |
-        if .context.user == "admin" then .context.user = "cluster2-admin" else . end
-      ) |
-      .["current-context"] = "cluster2"
-    ' "$HOME"/kubeconfig-cluster2/kubeconfig > "$HOME"/kubeconfig-cluster2/kubeconfig.tmp
-    mv "$HOME"/kubeconfig-cluster2/kubeconfig.tmp "$HOME"/kubeconfig-cluster2/kubeconfig
+    # Rename user and context in cluster2 kubeconfig to avoid conflicts
+    log_info "Configuring cluster2 kubeconfig with unique credentials..."
+    export KUBECONFIG="$HOME"/kubeconfig-cluster2/kubeconfig
+
+    CRT=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-certificate-data"]')
+    KEY=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-key-data"]')
+
+    kubectl config set-credentials "cluster2-admin" \
+      --client-certificate-data="$CRT" \
+      --client-key-data="$KEY" \
+      --embed-certs=true
+
+    kubectl config set-context cluster2 \
+      --cluster=$(kubectl config view -o json | jq -r '.contexts[] | select(.name=="admin") | .context.cluster') \
+      --user=cluster2-admin
+
+    kubectl config delete-user admin 2>/dev/null || true
+    kubectl config delete-context admin 2>/dev/null || true
+    kubectl config use-context cluster2
+
     log_info "Configured kubeconfig for cluster2"
 
     # Backup current kubeconfig
@@ -198,26 +216,40 @@ check_prerequisites() {
         log_info "Backed up existing kubeconfig"
     fi
 
-    # Rename hub context and user if needed
+    # Rename hub user and context if needed
+    export KUBECONFIG=~/.kube/config
     CURRENT_CTX=$(kubectl config current-context 2>/dev/null || echo "")
+
     if [ -n "$CURRENT_CTX" ]; then
-        log_info "Renaming context and user in hub kubeconfig..."
-        jq '
-          .users |= map(if .name == "admin" then .name = "hub-admin" else . end) |
-          .contexts |= map(
-            if .name == "'"$CURRENT_CTX"'" then .name = "hub" else . end |
-            if .context.user == "admin" then .context.user = "hub-admin" else . end
-          ) |
-          .["current-context"] = "hub"
-        ' ~/.kube/config > ~/.kube/config.tmp
-        mv ~/.kube/config.tmp ~/.kube/config
-        log_info "Renamed hub context and user"
+        log_info "Configuring hub kubeconfig with unique credentials..."
+
+        CRT=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-certificate-data"]')
+        KEY=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-key-data"]')
+
+        if [ -n "$CRT" ] && [ -n "$KEY" ]; then
+            kubectl config set-credentials "hub-admin" \
+              --client-certificate-data="$CRT" \
+              --client-key-data="$KEY" \
+              --embed-certs=true
+
+            kubectl config set-context hub \
+              --cluster=$(kubectl config view -o json | jq -r --arg ctx "$CURRENT_CTX" '.contexts[] | select(.name==$ctx) | .context.cluster') \
+              --user=hub-admin
+
+            kubectl config delete-user admin 2>/dev/null || true
+            kubectl config delete-context "$CURRENT_CTX" 2>/dev/null || true
+            kubectl config use-context hub
+
+            log_info "Configured hub kubeconfig"
+        else
+            log_warning "Hub kubeconfig does not use 'admin' user, skipping rename"
+        fi
     fi
 
     # Merge all kubeconfigs into a single config file
     log_info "Merging kubeconfigs..."
-    KUBECONFIG=~/.kube/config:~/kubeconfig-cluster1/kubeconfig:~/kubeconfig-cluster2/kubeconfig \
-        kubectl config view --flatten > ~/.kube/config.merged
+    export KUBECONFIG=~/.kube/config:~/kubeconfig-cluster1/kubeconfig:~/kubeconfig-cluster2/kubeconfig
+    kubectl config view --flatten > ~/.kube/config.merged
 
     # Replace the original config with the merged one
     mv ~/.kube/config.merged ~/.kube/config
