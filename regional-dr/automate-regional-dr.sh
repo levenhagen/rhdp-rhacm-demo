@@ -160,7 +160,15 @@ check_prerequisites() {
       echo "kubeconfig cluster2 configured"
     fi
 
-    kubectl config rename-context admin hub
+    CURRENT_CTX=$(kubectl config current-context 2>/dev/null)
+
+    if [ "$CURRENT_CTX" != "hub" ]; then
+        kubectl config rename-context admin hub
+        echo "kubeconfig hub context configured..."
+    else 
+        echo "kubeconfig hub context already configured..."
+    fi
+    
     export KUBECONFIG=~/.kube/config:~/kubeconfig-cluster1/kubeconfig:~/kubeconfig-cluster2/kubeconfig
     echo "Showing current contexts"
     kubectl config get-contexts
