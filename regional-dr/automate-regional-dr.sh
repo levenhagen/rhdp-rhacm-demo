@@ -195,6 +195,7 @@ check_prerequisites() {
     log_info "Configured kubeconfig for cluster1"
 
     # Extract cluster2 kubeconfig
+    export KUBECONFIG="$HOME"/.kube/config
     oc -n cluster2 extract secret/"$SECRET_cluster2" --keys=kubeconfig --to="$HOME"/kubeconfig-cluster2 --confirm
 
     # Rename user and context in cluster2 kubeconfig to avoid conflicts
