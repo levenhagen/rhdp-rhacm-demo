@@ -93,10 +93,10 @@ wait_for_resource() {
     while true; do
         local phase available
 
-        phase=$(oc get "$resource" -n "$namespace" --context "$context" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-        echo "$phase"
-        available=$(oc get "$resource" -n "$namespace" --context "$context" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || echo "")
-        echo "$available"
+        phase=$(oc get $resource -n "$namespace" --context "$context" -o json 2>/dev/null | jq -r '.status.phase // empty' 2>/dev/null || echo "")
+        echo "Phase: '$phase'"
+        available=$(oc get $resource -n "$namespace" --context "$context" -o json 2>/dev/null | jq -r '.status.conditions[] | select(.type=="Available") | .status' 2>/dev/null || echo "")
+        echo "Available: '$available'"
         if [ "$phase" = "Ready" ] || [ "$available" = "True" ]; then
             log_success "$resource is Ready/Available"
             return 0
