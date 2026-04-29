@@ -956,7 +956,7 @@ metadata:
   name: odf-multicluster-orchestrator
   namespace: openshift-operators
 spec:
-  channel: stable-4.20
+  channel: stable-4.21
   name: odf-multicluster-orchestrator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
