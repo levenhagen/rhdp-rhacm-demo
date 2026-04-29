@@ -91,16 +91,22 @@ wait_for_resource() {
 
     # Then wait for Phase: Ready
     while true; do
-        local phase=$(oc get $resource -n "$namespace" --context "$context" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-        if [ "$phase" == "Ready" ]; then
-            log_success "$resource is Ready"
+        local phase available
+
+        phase=$(oc get "$resource" -n "$namespace" --context "$context" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+
+        available=$(oc get "$resource" -n "$namespace" --context "$context" -o jsonpath='{range .status.conditions[?(@.type=="Available")]}{.status}{end}' 2>/dev/null || echo "")
+
+        if [ "$phase" = "Ready" ] || [ "$available" = "True" ]; then
+            log_success "$resource is Ready/Available"
             return 0
         fi
 
         sleep 5
         count=$((count + 5))
-        if [ $count -ge $timeout ]; then
-            log_error "Timeout waiting for $resource to reach Phase: Ready (current phase: $phase)"
+
+        if [ "$count" -ge "$timeout" ]; then
+            log_error "Timeout waiting for $resource (phase: $phase, Available: $available)"
             return 1
         fi
     done
