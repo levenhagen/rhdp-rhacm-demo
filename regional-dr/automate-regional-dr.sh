@@ -876,6 +876,28 @@ EOF
         elapsed=$((elapsed + 10))
     done
 
+    # Enable Console plugin cluster1 and cluster2
+    cat <<EOF | oc --context cluster1 apply -f -
+apiVersion: operator.openshift.io/v1
+kind: Console
+metadata:
+  name: cluster
+spec:
+  plugins:
+    - odf-console
+EOF
+
+    # Enable Console plugin
+    cat <<EOF | oc --context cluster2 apply -f -
+apiVersion: operator.openshift.io/v1
+kind: Console
+metadata:
+  name: cluster
+spec:
+  plugins:
+    - odf-console
+EOF
+
     log_success "ODF policies deployed"
 }
 
@@ -949,6 +971,17 @@ EOF
     log_info "Verifying OpenShift DR Hub Operator..."
     wait_for_pods "openshift-dr-system" "app=ramen-hub-operator" 300
 
+    # Enable Console plugin
+    cat <<EOF | oc apply -f -
+apiVersion: operator.openshift.io/v1
+kind: Console
+metadata:
+  name: cluster
+spec:
+  plugins:
+    - odf-multicluster-console
+EOF
+    
     log_success "ODF MultiCluster Orchestrator installed"
 }
 
