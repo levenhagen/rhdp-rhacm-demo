@@ -95,7 +95,7 @@ wait_for_resource() {
 
         phase=$(oc get "$resource" -n "$namespace" --context "$context" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
         echo "$phase"
-        available=$(oc get "$resource" -n "$namespace" --context "$context" -o jsonpath='{range .status.conditions[?(@.type=="Available")]}{.status}{end}' 2>/dev/null || echo "")
+        available=$(oc get "$resource" -n "$namespace" --context "$context" -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || echo "")
         echo "$available"
         if [ "$phase" = "Ready" ] || [ "$available" = "True" ]; then
             log_success "$resource is Ready/Available"
