@@ -322,7 +322,14 @@ deploy_submariner() {
 
     # Check if Submariner addon already exists
     if oc get managedclusteraddon submariner -n "$CLUSTER1_NAME" &> /dev/null; then
-        log_warning "Submariner already deployed, skipping..."
+        log_warning "Submariner already deployed, checking status..."
+        sleep 15
+
+        # Wait for submariner-addon to be available
+        wait_for_resource "managedclusteraddon submariner" "$CLUSTER1_NAME" "hub" 600
+        wait_for_resource "managedclusteraddon submariner" "$CLUSTER2_NAME" "hub" 600
+
+        log_success "Submariner deployment succeeded"
         return 0
     fi
 
