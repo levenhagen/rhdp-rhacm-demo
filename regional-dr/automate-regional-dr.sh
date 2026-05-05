@@ -876,7 +876,7 @@ EOF
         elapsed=$((elapsed + 10))
     done
 
-    # Enable Console plugin cluster1 and cluster2
+    # Enable Console plugin cluster1 
     cat <<EOF | oc --context cluster1 apply -f -
 apiVersion: operator.openshift.io/v1
 kind: Console
@@ -887,7 +887,7 @@ spec:
     - odf-console
 EOF
 
-    # Enable Console plugin
+    # Enable Console plugin cluster2
     cat <<EOF | oc --context cluster2 apply -f -
 apiVersion: operator.openshift.io/v1
 kind: Console
@@ -897,6 +897,10 @@ spec:
   plugins:
     - odf-console
 EOF
+
+    # Remove gp3-csi as default storageclass in both cluster1 and cluster2, so ODF becomes default
+    oc --context cluster1 annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
+    oc --context cluster1 annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
 
     log_success "ODF policies deployed"
 }
