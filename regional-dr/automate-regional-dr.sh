@@ -900,7 +900,7 @@ EOF
 
     # Remove gp3-csi as default storageclass in both cluster1 and cluster2, so ODF becomes default
     oc --context cluster1 annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
-    oc --context cluster1 annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
+    oc --context cluster2 annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
 
     log_success "ODF policies deployed"
 }
