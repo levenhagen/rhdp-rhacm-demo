@@ -855,6 +855,28 @@ spec:
                       portable: true
                       replica: 3
                       resources: {}
+    - objectDefition:
+        apiVersion: policy.open-cluster-management.io/v1beta1
+        kind: OperatorPolicy
+        metadata:
+          name: install-operator-oadp
+        spec:
+          remediationAction: enforce
+          severity: critical
+          complianceType: musthave
+          subscription:
+            name: redhat-oadp-operator
+            namespace: openshift-adp
+            channel: stable
+            source: redhat-operators
+            sourceNamespace: openshift-marketplace
+            startingCSV: oadp-operator.v1.5.5
+          upgradeApproval: Automatic
+          versions:
+          operatorGroup:
+            name: default
+            targetNamespaces:
+              - openshift-adp
 ---
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Placement
