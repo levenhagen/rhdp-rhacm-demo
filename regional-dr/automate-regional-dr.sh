@@ -738,7 +738,33 @@ prepare_odf_nodes() {
 deploy_odf_policies() {
     # Check if ODF policy already exists
     if oc get policy install-odf-operator -n default &> /dev/null; then
-        log_warning "ODF policy already deployed, skipping..."
+        log_warning "ODF policy already deployed, skipping... Making sure storageclasses and plugins are configured"
+        # Enable Console plugin cluster1 
+        cat <<EOF | oc --context cluster1 apply -f -
+apiVersion: operator.openshift.io/v1
+kind: Console
+metadata:
+  name: cluster
+spec:
+  plugins:
+    - odf-console
+EOF
+
+        # Enable Console plugin cluster2
+        cat <<EOF | oc --context cluster2 apply -f -
+apiVersion: operator.openshift.io/v1
+kind: Console
+metadata:
+  name: cluster
+spec:
+  plugins:
+    - odf-console
+EOF
+
+        # Remove gp3-csi as default storageclass in both cluster1 and cluster2, so ODF becomes default
+        oc --context cluster1 annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
+        oc --context cluster2 annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
+
         return 0
     fi
 
