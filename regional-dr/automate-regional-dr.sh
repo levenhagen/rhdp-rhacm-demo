@@ -855,11 +855,11 @@ spec:
                       portable: true
                       replica: 3
                       resources: {}
-    - objectDefition:
+    - objectDefinition:
         apiVersion: policy.open-cluster-management.io/v1beta1
         kind: OperatorPolicy
         metadata:
-          name: install-operator-oadp
+          name: install-oadp-operator
         spec:
           remediationAction: enforce
           severity: critical
