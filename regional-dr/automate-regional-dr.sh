@@ -974,7 +974,10 @@ install_odf_mco() {
 
     # Check if already installed
     if oc get deployment odf-multicluster-console -n openshift-operators &> /dev/null; then
-        log_warning "ODF MultiCluster Orchestrator already installed, skipping..."
+        log_warning "ODF MultiCluster Orchestrator already installed, skipping... checking statuses"
+        wait_for_pods "openshift-operators" "app.kubernetes.io/name=odf-multicluster-console" 600
+        wait_for_pods "openshift-operators" "control-plane=odfmo-controller-manager" 600
+        wait_for_pods "openshift-operators" "app=ramen-hub" 600
         return 0
     fi
 
@@ -995,11 +998,9 @@ EOF
 
     log_info "Waiting for ODF MultiCluster Orchestrator to install..."
     sleep 60
-    wait_for_pods "openshift-operators" "app.kubernetes.io/name=odf-multicluster-orchestrator" 600
-
-    # Verify OpenShift DR Hub Operator (installed as dependency)
-    log_info "Verifying OpenShift DR Hub Operator..."
-    wait_for_pods "openshift-dr-system" "app=ramen-hub-operator" 300
+    wait_for_pods "openshift-operators" "app.kubernetes.io/name=odf-multicluster-console" 600
+    wait_for_pods "openshift-operators" "control-plane=odfmo-controller-manager" 600
+    wait_for_pods "openshift-operators" "app=ramen-hub" 600
 
     # Enable Console plugin
     cat <<EOF | oc apply -f -
