@@ -669,11 +669,11 @@ prepare_odf_nodes() {
     log_info "Step 9: Preparing nodes for ODF deployment..."
 
     # Label worker nodes on cluster1
-    log_info "Labeling worker nodes on $CLUSTER1_NAME..."
+    log_info "Labeling worker nodes on $CLUSTER1_NAME (excluding Submariner gateway nodes)..."
 
-    # Get nodes and capture only stdout
+    # Get nodes and capture only stdout, excluding Submariner gateway nodes
     local cluster1_nodes
-    cluster1_nodes=$(oc --context="$CLUSTER1_NAME" get nodes -l node-role.kubernetes.io/worker= -o name 2>/dev/null)
+    cluster1_nodes=$(oc --context="$CLUSTER1_NAME" get nodes -l 'node-role.kubernetes.io/worker=,submariner.io/gateway!=true' -o name 2>/dev/null)
     if [ $? -ne 0 ]; then
         log_error "Failed to get worker nodes from $CLUSTER1_NAME - verify cluster1 context is properly configured"
         log_error "Run: kubectl config get-contexts cluster1"
@@ -699,11 +699,11 @@ prepare_odf_nodes() {
     log_success "Successfully labeled $node_count worker node(s) on $CLUSTER1_NAME"
 
     # Label worker nodes on cluster2
-    log_info "Labeling worker nodes on $CLUSTER2_NAME..."
+    log_info "Labeling worker nodes on $CLUSTER2_NAME (excluding Submariner gateway nodes)..."
 
-    # Get nodes and capture only stdout
+    # Get nodes and capture only stdout, excluding Submariner gateway nodes
     local cluster2_nodes
-    cluster2_nodes=$(oc --context="$CLUSTER2_NAME" get nodes -l node-role.kubernetes.io/worker= -o name 2>/dev/null)
+    cluster2_nodes=$(oc --context="$CLUSTER2_NAME" get nodes -l 'node-role.kubernetes.io/worker=,submariner.io/gateway!=true' -o name 2>/dev/null)
     if [ $? -ne 0 ]; then
         log_error "Failed to get worker nodes from $CLUSTER2_NAME - verify cluster2 context is properly configured"
         log_error "Run: kubectl config get-contexts cluster2"
