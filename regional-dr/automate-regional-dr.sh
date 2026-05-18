@@ -1132,6 +1132,34 @@ EOF
 }
 
 ###############################################################################
+# Prompt user to run a step
+###############################################################################
+prompt_to_run_step() {
+    local step_name=$1
+    local step_description=$2
+
+    while true; do
+        echo ""
+        echo -e "${YELLOW}>>> ${step_description}${NC}"
+        read -p "Do you want to run this step? [y/n]: " -n 1 -r
+        echo ""
+
+        case $REPLY in
+            [Yy])
+                return 0
+                ;;
+            [Nn])
+                log_warning "Skipping ${step_name}..."
+                return 1
+                ;;
+            *)
+                echo "Invalid input. Please enter 'y' or 'n'."
+                ;;
+        esac
+    done
+}
+
+###############################################################################
 # Main execution
 ###############################################################################
 main() {
@@ -1147,35 +1175,65 @@ main() {
     echo "Starting automation..."
     echo ""
 
-    deploy_submariner
-    echo ""
+    # Step 4: Deploy Submariner
+    if prompt_to_run_step "deploy_submariner" "Step 4: Deploy Submariner"; then
+        deploy_submariner
+        echo ""
+    fi
 
-    install_gitops_operator
-    echo ""
+    # Step 5: Install OpenShift GitOps Operator
+    if prompt_to_run_step "install_gitops_operator" "Step 5: Install OpenShift GitOps Operator"; then
+        install_gitops_operator
+        echo ""
+    fi
 
-    integrate_gitops_rhacm
-    echo ""
+    # Step 6: Integrate OpenShift GitOps and RHACM
+    if prompt_to_run_step "integrate_gitops_rhacm" "Step 6: Integrate OpenShift GitOps and RHACM"; then
+        integrate_gitops_rhacm
+        echo ""
+    fi
 
-    configure_clusterset_bindings
-    echo ""
+    # Step 7: Configure ClusterSet Bindings
+    if prompt_to_run_step "configure_clusterset_bindings" "Step 7: Configure ClusterSet Bindings"; then
+        configure_clusterset_bindings
+        echo ""
+    fi
 
-    adjust_argocd_permissions
-    echo ""
+    # Step 8: Adjust ArgoCD Cluster-Admin Permissions
+    if prompt_to_run_step "adjust_argocd_permissions" "Step 8: Adjust ArgoCD Cluster-Admin Permissions"; then
+        adjust_argocd_permissions
+        echo ""
+    fi
 
-    prepare_odf_nodes
-    echo ""
+    # Step 9: Prepare Nodes for ODF Deployment
+    if prompt_to_run_step "prepare_odf_nodes" "Step 9: Prepare Nodes for ODF Deployment"; then
+        prepare_odf_nodes
+        echo ""
+    fi
 
-    deploy_odf_policies
-    echo ""
+    # Step 10: Deploy ODF Policies
+    if prompt_to_run_step "deploy_odf_policies" "Step 10: Deploy ODF Policies"; then
+        deploy_odf_policies
+        echo ""
+    fi
 
-    patch_storagecluster
-    echo ""
+    # Step 11: Patch StorageCluster CR
+    if prompt_to_run_step "patch_storagecluster" "Step 11: Patch StorageCluster CR for GlobalNet"; then
+        patch_storagecluster
+        echo ""
+    fi
 
-    install_odf_mco
-    echo ""
+    # Step 12: Install ODF MultiCluster Orchestrator
+    if prompt_to_run_step "install_odf_mco" "Step 12: Install ODF MultiCluster Orchestrator"; then
+        install_odf_mco
+        echo ""
+    fi
 
-    configure_ssl_access
-    echo ""
+    # Step 13: Configure SSL Access Across Clusters
+    if prompt_to_run_step "configure_ssl_access" "Step 13: Configure SSL Access Across Clusters"; then
+        configure_ssl_access
+        echo ""
+    fi
 
     echo "============================================================================="
     log_success "Automation completed successfully!"
