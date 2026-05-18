@@ -17,7 +17,7 @@
 #
 # Prerequisites:
 # - oc CLI tool installed and logged into RHACM hub cluster
-# - Two managed clusters (primary and secondary) deployed and ready
+# - Two managed clusters (cluster1 and cluster2) deployed and ready
 # - ClusterSet 'regional' created with both clusters
 #
 # Usage: ./automate-regional-dr.sh
@@ -34,8 +34,8 @@ NC='\033[0m' # No Color
 
 # Configuration
 CLUSTERSET_NAME="regional"
-CLUSTER_PRIMARY="primary"
-CLUSTER_SECONDARY="secondary"
+CLUSTER1_NAME="cluster1"
+CLUSTER2_NAME="cluster2"
 POLICIES_NAMESPACE="policies"
 GITOPS_NAMESPACE="openshift-gitops"
 POLICY_REPO="https://github.com/levenhagen/policy-collection"
@@ -128,13 +128,13 @@ check_prerequisites() {
     fi
 
     # Check if managedclusters exist
-    if ! oc get managedcluster "$CLUSTER_PRIMARY" &> /dev/null; then
-        log_error "Managed cluster '$CLUSTER_PRIMARY' not found"
+    if ! oc get managedcluster "$CLUSTER1_NAME" &> /dev/null; then
+        log_error "Managed cluster '$CLUSTER1_NAME' not found"
         exit 1
     fi
 
-    if ! oc get managedcluster "$CLUSTER_SECONDARY" &> /dev/null; then
-        log_error "Managed cluster '$CLUSTER_SECONDARY' not found"
+    if ! oc get managedcluster "$CLUSTER2_NAME" &> /dev/null; then
+        log_error "Managed cluster '$CLUSTER2_NAME' not found"
         exit 1
     fi
 
@@ -153,25 +153,25 @@ check_prerequisites() {
         exit 1
     fi
 
-    SECRET_primary=$(oc -n primary get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^primary.*kubeconfig$' | head -n1)
-    SECRET_secondary=$(oc -n secondary get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^secondary.*kubeconfig$' | head -n1)
+    SECRET_cluster1=$(oc -n cluster1 get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^cluster1.*kubeconfig$' | head -n1)
+    SECRET_cluster2=$(oc -n cluster2 get secret -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep '^cluster2.*kubeconfig$' | head -n1)
 
-    if [ -z "$SECRET_primary" ]; then
-      log_error "Secret primary-kubeconfig not found"
+    if [ -z "$SECRET_cluster1" ]; then
+      log_error "Secret cluster1-kubeconfig not found"
       exit 1
     fi
 
-    if [ -z "$SECRET_secondary" ]; then
-      log_error "Secret secondary-kubeconfig not found"
+    if [ -z "$SECRET_cluster2" ]; then
+      log_error "Secret cluster2-kubeconfig not found"
       exit 1
     fi
 
-    # Extract primary kubeconfig
-    oc -n primary extract secret/"$SECRET_primary" --keys=kubeconfig --to="$HOME"/kubeconfig-primary --confirm
+    # Extract cluster1 kubeconfig
+    oc -n cluster1 extract secret/"$SECRET_cluster1" --keys=kubeconfig --to="$HOME"/kubeconfig-cluster1 --confirm
 
-    # Rename user and context in primary kubeconfig to avoid conflicts
-    log_info "Configuring primary kubeconfig with unique credentials..."
-    export KUBECONFIG="$HOME"/kubeconfig-primary/kubeconfig
+    # Rename user and context in cluster1 kubeconfig to avoid conflicts
+    log_info "Configuring cluster1 kubeconfig with unique credentials..."
+    export KUBECONFIG="$HOME"/kubeconfig-cluster1/kubeconfig
 
     CRT=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-certificate-data"]')
     KEY=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-key-data"]')
@@ -182,31 +182,31 @@ check_prerequisites() {
     echo "$CRT" | base64 -d > "$TMP_CRT"
     echo "$KEY" | base64 -d > "$TMP_KEY"
 
-    kubectl config set-credentials "primary-admin" \
+    kubectl config set-credentials "cluster1-admin" \
       --client-certificate="$TMP_CRT" \
       --client-key="$TMP_KEY" \
       --embed-certs=true
 
-    kubectl config set-context primary \
+    kubectl config set-context cluster1 \
       --cluster=$(kubectl config view -o json | jq -r '.contexts[] | select(.name=="admin") | .context.cluster') \
-      --user=primary-admin
+      --user=cluster1-admin
 
     kubectl config delete-user admin 2>/dev/null || true
     kubectl config delete-context admin 2>/dev/null || true
-    kubectl config use-context primary
+    kubectl config use-context cluster1
 
     # Clean up temporary files
     rm -f "$TMP_CRT" "$TMP_KEY"
 
-    log_info "Configured kubeconfig for primary"
+    log_info "Configured kubeconfig for cluster1"
 
-    # Extract secondary kubeconfig
+    # Extract cluster2 kubeconfig
     export KUBECONFIG="$HOME"/.kube/config
-    oc -n secondary extract secret/"$SECRET_secondary" --keys=kubeconfig --to="$HOME"/kubeconfig-secondary --confirm
+    oc -n cluster2 extract secret/"$SECRET_cluster2" --keys=kubeconfig --to="$HOME"/kubeconfig-cluster2 --confirm
 
-    # Rename user and context in secondary kubeconfig to avoid conflicts
-    log_info "Configuring secondary kubeconfig with unique credentials..."
-    export KUBECONFIG="$HOME"/kubeconfig-secondary/kubeconfig
+    # Rename user and context in cluster2 kubeconfig to avoid conflicts
+    log_info "Configuring cluster2 kubeconfig with unique credentials..."
+    export KUBECONFIG="$HOME"/kubeconfig-cluster2/kubeconfig
 
     CRT=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-certificate-data"]')
     KEY=$(kubectl config view --raw -o json | jq -r '.users[] | select(.name=="admin") | .user["client-key-data"]')
@@ -217,23 +217,23 @@ check_prerequisites() {
     echo "$CRT" | base64 -d > "$TMP_CRT"
     echo "$KEY" | base64 -d > "$TMP_KEY"
 
-    kubectl config set-credentials "secondary-admin" \
+    kubectl config set-credentials "cluster2-admin" \
       --client-certificate="$TMP_CRT" \
       --client-key="$TMP_KEY" \
       --embed-certs=true
 
-    kubectl config set-context secondary \
+    kubectl config set-context cluster2 \
       --cluster=$(kubectl config view -o json | jq -r '.contexts[] | select(.name=="admin") | .context.cluster') \
-      --user=secondary-admin
+      --user=cluster2-admin
 
     kubectl config delete-user admin 2>/dev/null || true
     kubectl config delete-context admin 2>/dev/null || true
-    kubectl config use-context secondary
+    kubectl config use-context cluster2
 
     # Clean up temporary files
     rm -f "$TMP_CRT" "$TMP_KEY"
 
-    log_info "Configured kubeconfig for secondary"
+    log_info "Configured kubeconfig for cluster2"
 
     # Backup current kubeconfig
     if [ -f ~/.kube/config ]; then
@@ -282,7 +282,7 @@ check_prerequisites() {
 
     # Merge all kubeconfigs into a single config file
     log_info "Merging kubeconfigs..."
-    export KUBECONFIG=~/.kube/config:~/kubeconfig-primary/kubeconfig:~/kubeconfig-secondary/kubeconfig
+    export KUBECONFIG=~/.kube/config:~/kubeconfig-cluster1/kubeconfig:~/kubeconfig-cluster2/kubeconfig
     kubectl config view --flatten > ~/.kube/config.merged
 
     # Replace the original config with the merged one
@@ -293,13 +293,13 @@ check_prerequisites() {
 
     # Verify contexts are available
     log_info "Verifying kubeconfig contexts..."
-    if ! kubectl config get-contexts primary &>/dev/null; then
-        log_error "primary context not found in merged kubeconfig"
+    if ! kubectl config get-contexts cluster1 &>/dev/null; then
+        log_error "cluster1 context not found in merged kubeconfig"
         exit 1
     fi
 
-    if ! kubectl config get-contexts secondary &>/dev/null; then
-        log_error "secondary context not found in merged kubeconfig"
+    if ! kubectl config get-contexts cluster2 &>/dev/null; then
+        log_error "cluster2 context not found in merged kubeconfig"
         exit 1
     fi
 
@@ -321,13 +321,13 @@ deploy_submariner() {
     log_info "Step 4: Deploying Submariner..."
 
     # Check if Submariner addon already exists
-    if oc get managedclusteraddon submariner -n "$CLUSTER_PRIMARY" &> /dev/null; then
+    if oc get managedclusteraddon submariner -n "$CLUSTER1_NAME" &> /dev/null; then
         log_warning "Submariner already deployed, checking status..."
         sleep 15
 
         # Wait for submariner-addon to be available
-        wait_for_resource "managedclusteraddon submariner" "$CLUSTER_PRIMARY" "hub" 600
-        wait_for_resource "managedclusteraddon submariner" "$CLUSTER_SECONDARY" "hub" 600
+        wait_for_resource "managedclusteraddon submariner" "$CLUSTER1_NAME" "hub" 600
+        wait_for_resource "managedclusteraddon submariner" "$CLUSTER2_NAME" "hub" 600
 
         log_success "Submariner deployment succeeded"
         return 0
@@ -342,7 +342,7 @@ apiVersion: addon.open-cluster-management.io/v1alpha1
 kind: ManagedClusterAddOn
 metadata:
   name: submariner
-  namespace: primary
+  namespace: cluster1
 spec:
   installNamespace: submariner-operator
 ---
@@ -350,7 +350,7 @@ apiVersion: submarineraddon.open-cluster-management.io/v1alpha1
 kind: SubmarinerConfig
 metadata:
   name: submariner
-  namespace: primary
+  namespace: cluster1
 spec:
   gatewayConfig:
     gateways: 1
@@ -362,13 +362,13 @@ spec:
   cableDriver: libreswan
   globalCIDR: ""
   credentialsSecret:
-    name: primary-aws-creds
+    name: cluster1-aws-creds
 ---
 apiVersion: addon.open-cluster-management.io/v1alpha1
 kind: ManagedClusterAddOn
 metadata:
   name: submariner
-  namespace: secondary
+  namespace: cluster2
 spec:
   installNamespace: submariner-operator
 ---
@@ -376,7 +376,7 @@ apiVersion: submarineraddon.open-cluster-management.io/v1alpha1
 kind: SubmarinerConfig
 metadata:
   name: submariner
-  namespace: secondary
+  namespace: cluster2
 spec:
   gatewayConfig:
     gateways: 1
@@ -388,7 +388,7 @@ spec:
   cableDriver: libreswan
   globalCIDR: ""
   credentialsSecret:
-    name: secondary-aws-creds
+    name: cluster2-aws-creds
 ---
 apiVersion: submariner.io/v1alpha1
 kind: Broker
@@ -406,8 +406,8 @@ EOF
     sleep 30
 
     # Wait for submariner-addon to be available
-    wait_for_resource "managedclusteraddon submariner" "$CLUSTER_PRIMARY" "hub" 600
-    wait_for_resource "managedclusteraddon submariner" "$CLUSTER_SECONDARY" "hub" 600
+    wait_for_resource "managedclusteraddon submariner" "$CLUSTER1_NAME" "hub" 600
+    wait_for_resource "managedclusteraddon submariner" "$CLUSTER2_NAME" "hub" 600
 
     log_success "Submariner deployment initiated"
 }
@@ -668,65 +668,65 @@ EOF
 prepare_odf_nodes() {
     log_info "Step 9: Preparing nodes for ODF deployment..."
 
-    # Label worker nodes on primary
-    log_info "Labeling worker nodes on $CLUSTER_PRIMARY (excluding Submariner gateway nodes)..."
+    # Label worker nodes on cluster1
+    log_info "Labeling worker nodes on $CLUSTER1_NAME (excluding Submariner gateway nodes)..."
 
     # Get nodes and capture only stdout, excluding Submariner gateway nodes
-    local primary_nodes
-    primary_nodes=$(oc --context="$CLUSTER_PRIMARY" get nodes -l 'node-role.kubernetes.io/worker=,submariner.io/gateway!=true' -o name 2>/dev/null)
+    local cluster1_nodes
+    cluster1_nodes=$(oc --context="$CLUSTER1_NAME" get nodes -l 'node-role.kubernetes.io/worker=,submariner.io/gateway!=true' -o name 2>/dev/null)
     if [ $? -ne 0 ]; then
-        log_error "Failed to get worker nodes from $CLUSTER_PRIMARY - verify primary context is properly configured"
-        log_error "Run: kubectl config get-contexts primary"
+        log_error "Failed to get worker nodes from $CLUSTER1_NAME - verify cluster1 context is properly configured"
+        log_error "Run: kubectl config get-contexts cluster1"
         exit 1
     fi
 
-    if [ -z "$primary_nodes" ]; then
-        log_error "No worker nodes found on $CLUSTER_PRIMARY"
+    if [ -z "$cluster1_nodes" ]; then
+        log_error "No worker nodes found on $CLUSTER1_NAME"
         exit 1
     fi
 
     local node_count=0
     while IFS= read -r node; do
         if [ -n "$node" ]; then
-            log_info "Labeling $node on $CLUSTER_PRIMARY"
-            if ! oc --context="$CLUSTER_PRIMARY" label "$node" cluster.ocs.openshift.io/openshift-storage="" --overwrite 2>/dev/null; then
-                log_error "Failed to label node $node on $CLUSTER_PRIMARY"
+            log_info "Labeling $node on $CLUSTER1_NAME"
+            if ! oc --context="$CLUSTER1_NAME" label "$node" cluster.ocs.openshift.io/openshift-storage="" --overwrite 2>/dev/null; then
+                log_error "Failed to label node $node on $CLUSTER1_NAME"
                 exit 1
             fi
             node_count=$((node_count + 1))
         fi
-    done <<< "$primary_nodes"
-    log_success "Successfully labeled $node_count worker node(s) on $CLUSTER_PRIMARY"
+    done <<< "$cluster1_nodes"
+    log_success "Successfully labeled $node_count worker node(s) on $CLUSTER1_NAME"
 
-    # Label worker nodes on secondary
-    log_info "Labeling worker nodes on $CLUSTER_SECONDARY (excluding Submariner gateway nodes)..."
+    # Label worker nodes on cluster2
+    log_info "Labeling worker nodes on $CLUSTER2_NAME (excluding Submariner gateway nodes)..."
 
     # Get nodes and capture only stdout, excluding Submariner gateway nodes
-    local secondary_nodes
-    secondary_nodes=$(oc --context="$CLUSTER_SECONDARY" get nodes -l 'node-role.kubernetes.io/worker=,submariner.io/gateway!=true' -o name 2>/dev/null)
+    local cluster2_nodes
+    cluster2_nodes=$(oc --context="$CLUSTER2_NAME" get nodes -l 'node-role.kubernetes.io/worker=,submariner.io/gateway!=true' -o name 2>/dev/null)
     if [ $? -ne 0 ]; then
-        log_error "Failed to get worker nodes from $CLUSTER_SECONDARY - verify secondary context is properly configured"
-        log_error "Run: kubectl config get-contexts secondary"
+        log_error "Failed to get worker nodes from $CLUSTER2_NAME - verify cluster2 context is properly configured"
+        log_error "Run: kubectl config get-contexts cluster2"
         exit 1
     fi
 
-    if [ -z "$secondary_nodes" ]; then
-        log_error "No worker nodes found on $CLUSTER_SECONDARY"
+    if [ -z "$cluster2_nodes" ]; then
+        log_error "No worker nodes found on $CLUSTER2_NAME"
         exit 1
     fi
 
     node_count=0
     while IFS= read -r node; do
         if [ -n "$node" ]; then
-            log_info "Labeling $node on $CLUSTER_SECONDARY"
-            if ! oc --context="$CLUSTER_SECONDARY" label "$node" cluster.ocs.openshift.io/openshift-storage="" --overwrite 2>/dev/null; then
-                log_error "Failed to label node $node on $CLUSTER_SECONDARY"
+            log_info "Labeling $node on $CLUSTER2_NAME"
+            if ! oc --context="$CLUSTER2_NAME" label "$node" cluster.ocs.openshift.io/openshift-storage="" --overwrite 2>/dev/null; then
+                log_error "Failed to label node $node on $CLUSTER2_NAME"
                 exit 1
             fi
             node_count=$((node_count + 1))
         fi
-    done <<< "$secondary_nodes"
-    log_success "Successfully labeled $node_count worker node(s) on $CLUSTER_SECONDARY"
+    done <<< "$cluster2_nodes"
+    log_success "Successfully labeled $node_count worker node(s) on $CLUSTER2_NAME"
 
     log_success "All nodes labeled for ODF deployment"
 }
@@ -739,8 +739,8 @@ deploy_odf_policies() {
     # Check if ODF policy already exists
     if oc get policy install-odf-operator -n default &> /dev/null; then
         log_warning "ODF policy already deployed, skipping... Making sure storageclasses and plugins are configured"
-        # Enable Console plugin primary 
-        cat <<EOF | oc --context primary apply -f -
+        # Enable Console plugin cluster1 
+        cat <<EOF | oc --context cluster1 apply -f -
 apiVersion: operator.openshift.io/v1
 kind: Console
 metadata:
@@ -750,8 +750,8 @@ spec:
     - odf-console
 EOF
 
-        # Enable Console plugin secondary
-        cat <<EOF | oc --context secondary apply -f -
+        # Enable Console plugin cluster2
+        cat <<EOF | oc --context cluster2 apply -f -
 apiVersion: operator.openshift.io/v1
 kind: Console
 metadata:
@@ -761,9 +761,9 @@ spec:
     - odf-console
 EOF
 
-        # Remove gp3-csi as default storageclass in both primary and secondary, so ODF becomes default
-        oc --context primary annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
-        oc --context secondary annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
+        # Remove gp3-csi as default storageclass in both cluster1 and cluster2, so ODF becomes default
+        oc --context cluster1 annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
+        oc --context cluster2 annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
 
         return 0
     fi
@@ -924,8 +924,8 @@ EOF
         elapsed=$((elapsed + 10))
     done
 
-    # Enable Console plugin primary 
-    cat <<EOF | oc --context primary apply -f -
+    # Enable Console plugin cluster1 
+    cat <<EOF | oc --context cluster1 apply -f -
 apiVersion: operator.openshift.io/v1
 kind: Console
 metadata:
@@ -935,8 +935,8 @@ spec:
     - odf-console
 EOF
 
-    # Enable Console plugin secondary
-    cat <<EOF | oc --context secondary apply -f -
+    # Enable Console plugin cluster2
+    cat <<EOF | oc --context cluster2 apply -f -
 apiVersion: operator.openshift.io/v1
 kind: Console
 metadata:
@@ -946,9 +946,9 @@ spec:
     - odf-console
 EOF
 
-    # Remove gp3-csi as default storageclass in both primary and secondary, so ODF becomes default
-    oc --context primary annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
-    oc --context secondary annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
+    # Remove gp3-csi as default storageclass in both cluster1 and cluster2, so ODF becomes default
+    oc --context cluster1 annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
+    oc --context cluster2 annotate storageclass gp3-csi storageclass.kubernetes.io/is-default-class-
 
     log_success "ODF policies deployed"
 }
@@ -966,23 +966,23 @@ patch_storagecluster() {
     #fi
 
     log_info "Checking if StorageCluster is ready on managed clusters..."
-    wait_for_resource "storagecluster ocs-storagecluster" openshift-storage "$CLUSTER_PRIMARY" 600
-    wait_for_resource "storagecluster ocs-storagecluster" openshift-storage "$CLUSTER_SECONDARY" 600
+    wait_for_resource "storagecluster ocs-storagecluster" openshift-storage "$CLUSTER1_NAME" 600
+    wait_for_resource "storagecluster ocs-storagecluster" openshift-storage "$CLUSTER2_NAME" 600
 
-    # Patch primary
-    if oc --context="$CLUSTER_PRIMARY" get storagecluster -n openshift-storage &> /dev/null; then
-        log_info "Patching StorageCluster on $CLUSTER_PRIMARY..."
-        oc --context="$CLUSTER_PRIMARY" patch storagecluster ocs-storagecluster \
+    # Patch cluster1
+    if oc --context="$CLUSTER1_NAME" get storagecluster -n openshift-storage &> /dev/null; then
+        log_info "Patching StorageCluster on $CLUSTER1_NAME..."
+        oc --context="$CLUSTER1_NAME" patch storagecluster ocs-storagecluster \
           -n openshift-storage --type=merge \
-          --patch='{"spec":{"network":{"multiClusterService":{"clusterID":"'$CLUSTER_PRIMARY'","enabled":true}}}}'
+          --patch='{"spec":{"network":{"multiClusterService":{"clusterID":"'$CLUSTER1_NAME'","enabled":true}}}}'
     fi
 
-    # Patch secondary
-    if oc --context="$CLUSTER_SECONDARY" get storagecluster -n openshift-storage &> /dev/null; then
-        log_info "Patching StorageCluster on $CLUSTER_SECONDARY..."
-        oc --context="$CLUSTER_SECONDARY" patch storagecluster ocs-storagecluster \
+    # Patch cluster2
+    if oc --context="$CLUSTER2_NAME" get storagecluster -n openshift-storage &> /dev/null; then
+        log_info "Patching StorageCluster on $CLUSTER2_NAME..."
+        oc --context="$CLUSTER2_NAME" patch storagecluster ocs-storagecluster \
           -n openshift-storage --type=merge \
-          --patch='{"spec":{"network":{"multiClusterService":{"clusterID":"'$CLUSTER_SECONDARY'","enabled":true}}}}'
+          --patch='{"spec":{"network":{"multiClusterService":{"clusterID":"'$CLUSTER2_NAME'","enabled":true}}}}'
     fi
 
     log_success "StorageCluster patched for GlobalNet"
@@ -1044,21 +1044,21 @@ EOF
 configure_ssl_access() {
     log_info "Step 13: Configuring SSL access across clusters..."
 
-    # Extract ingress certificate from primary
-    log_info "Extracting ingress certificate from $CLUSTER_PRIMARY..."
-    CLUSTER1_CERT=$(oc --context="$CLUSTER_PRIMARY" get cm default-ingress-cert -n openshift-config-managed -o jsonpath="{['data']['ca-bundle\.crt']}")
+    # Extract ingress certificate from cluster1
+    log_info "Extracting ingress certificate from $CLUSTER1_NAME..."
+    CLUSTER1_CERT=$(oc --context="$CLUSTER1_NAME" get cm default-ingress-cert -n openshift-config-managed -o jsonpath="{['data']['ca-bundle\.crt']}")
 
     if [ -z "$CLUSTER1_CERT" ]; then
-        log_error "Failed to extract certificate from $CLUSTER_PRIMARY"
+        log_error "Failed to extract certificate from $CLUSTER1_NAME"
         return 1
     fi
 
-    # Extract ingress certificate from secondary
-    log_info "Extracting ingress certificate from $CLUSTER_SECONDARY..."
-    CLUSTER2_CERT=$(oc --context="$CLUSTER_SECONDARY" get cm default-ingress-cert -n openshift-config-managed -o jsonpath="{['data']['ca-bundle\.crt']}")
+    # Extract ingress certificate from cluster2
+    log_info "Extracting ingress certificate from $CLUSTER2_NAME..."
+    CLUSTER2_CERT=$(oc --context="$CLUSTER2_NAME" get cm default-ingress-cert -n openshift-config-managed -o jsonpath="{['data']['ca-bundle\.crt']}")
 
     if [ -z "$CLUSTER2_CERT" ]; then
-        log_error "Failed to extract certificate from $CLUSTER_SECONDARY"
+        log_error "Failed to extract certificate from $CLUSTER2_NAME"
         return 1
     fi
 
@@ -1073,9 +1073,9 @@ $CLUSTER1_CERT
 $CLUSTER2_CERT
 EOF
 
-    # Apply merged certificate ConfigMap to primary
-    log_info "Applying merged certificate ConfigMap to $CLUSTER_PRIMARY..."
-    cat <<EOF | oc --context="$CLUSTER_PRIMARY" apply -f -
+    # Apply merged certificate ConfigMap to cluster1
+    log_info "Applying merged certificate ConfigMap to $CLUSTER1_NAME..."
+    cat <<EOF | oc --context="$CLUSTER1_NAME" apply -f -
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1086,9 +1086,9 @@ data:
 $(cat "$MERGED_CERT_FILE" | sed 's/^/    /')
 EOF
 
-    # Apply merged certificate ConfigMap to secondary
-    log_info "Applying merged certificate ConfigMap to $CLUSTER_SECONDARY..."
-    cat <<EOF | oc --context="$CLUSTER_SECONDARY" apply -f -
+    # Apply merged certificate ConfigMap to cluster2
+    log_info "Applying merged certificate ConfigMap to $CLUSTER2_NAME..."
+    cat <<EOF | oc --context="$CLUSTER2_NAME" apply -f -
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1116,12 +1116,12 @@ EOF
     rm -f "$MERGED_CERT_FILE"
 
     # Patch the cluster proxy configuration to use the custom CA bundle on all clusters
-    log_info "Patching cluster proxy configuration on $CLUSTER_PRIMARY..."
-    oc --context="$CLUSTER_PRIMARY" patch proxy cluster --type=merge \
+    log_info "Patching cluster proxy configuration on $CLUSTER1_NAME..."
+    oc --context="$CLUSTER1_NAME" patch proxy cluster --type=merge \
       --patch='{"spec":{"trustedCA":{"name":"user-ca-bundle"}}}'
 
-    log_info "Patching cluster proxy configuration on $CLUSTER_SECONDARY..."
-    oc --context="$CLUSTER_SECONDARY" patch proxy cluster --type=merge \
+    log_info "Patching cluster proxy configuration on $CLUSTER2_NAME..."
+    oc --context="$CLUSTER2_NAME" patch proxy cluster --type=merge \
       --patch='{"spec":{"trustedCA":{"name":"user-ca-bundle"}}}'
 
     log_info "Patching cluster proxy configuration on hub cluster..."
