@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # ==========================================================
 # Automated setup for RHACM Observability setup Demo:
-# - yq
 # - kustomize
 # - policytools
 # - PolicyGenerator
@@ -30,30 +29,9 @@ for cmd in sudo curl tar oc jq; do
 done
 
 # ----------------------------------------------------------
-# Install dependencies
-# ----------------------------------------------------------
-echo "[1/5] Installing dependencies..."
-sudo dnf install -y golang jq wget curl tar
-
-# ----------------------------------------------------------
-# Install yq
-# ----------------------------------------------------------
-echo "[2/5] Installing yq..."
-go install github.com/mikefarah/yq/v4@latest
-
-if ! grep -q 'GOPATH/bin' ~/.bashrc; then
-  echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> ~/.bashrc
-fi
-
-export PATH=$PATH:$(go env GOPATH)/bin
-
-echo "yq installed:"
-yq --version || true
-
-# ----------------------------------------------------------
 # Install kustomize
 # ----------------------------------------------------------
-echo "[3/5] Installing kustomize..."
+echo "[1/3] Installing kustomize..."
 curl -s https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
 
 sudo mv ./kustomize /usr/local/bin/
@@ -65,7 +43,7 @@ kustomize version || true
 # ----------------------------------------------------------
 # Install policytools
 # ----------------------------------------------------------
-echo "[4/5] Installing policytools..."
+echo "[2/3] Installing policytools..."
 
 POLICYTOOLS_URL=$(oc get consoleclidownload acm-cli-downloads -o json | \
 jq -r '.spec.links[] | select(.text=="Download policytools for Linux for x86_64").href')
@@ -82,7 +60,7 @@ policytools version || true
 # ----------------------------------------------------------
 # Install PolicyGenerator
 # ----------------------------------------------------------
-echo "[5/5] Installing PolicyGenerator..."
+echo "[3/3] Installing PolicyGenerator..."
 
 PG_URL=$(oc get consoleclidownload acm-cli-downloads -o json | \
 jq -r '.spec.links[] | select(.text=="Download PolicyGenerator for Linux for x86_64").href')
